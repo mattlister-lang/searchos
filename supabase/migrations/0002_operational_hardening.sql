@@ -68,9 +68,12 @@ begin
     and not exists (select 1 from activity_participant ap2
                     where ap2.activity_id = a.id and ap2.person_id <> p_person);
 
+  -- placed_at is the durable placement marker: a later stage correction or
+  -- regression must not route a real placement to the hard-delete path.
   select exists (
     select 1 from candidacy c
-    where c.person_id = p_person and c.stage = 'placed'
+    where c.person_id = p_person
+      and (c.stage = 'placed' or c.placed_at is not null)
   ) into v_placed;
 
   if not v_placed then
@@ -82,7 +85,11 @@ begin
     delete from document where person_id = p_person;
     delete from person_email where person_id = p_person;
     delete from employment where person_id = p_person;
-    delete from candidacy where person_id = p_person and stage <> 'placed';
+    delete from candidacy
+    where person_id = p_person and stage <> 'placed' and placed_at is null;
+    -- The surviving rows are an anonymised statutory record: free-text notes
+    -- can identify the person, so they do not survive (ADR-012).
+    update candidacy set notes = null where person_id = p_person;
     delete from merge_queue where person_a = p_person or person_b = p_person;
     update deal set primary_contact_id = null where primary_contact_id = p_person;
 
@@ -111,7 +118,7 @@ select
   c.placed_at,
   p.erased_at
 from person p
-join candidacy c on c.person_id = p.id and c.stage = 'placed'
+join candidacy c on c.person_id = p.id and c.placed_at is not null
 where p.erased_at is not null
   and c.placed_at < now() - interval '6 years';
 

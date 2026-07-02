@@ -134,15 +134,17 @@ create table candidacy (
 );
 
 -- Track stage transitions; 'placed' stamps placed_at, which drives the
--- statutory-retention clock (ADR-012). Never set 'placed' as shorthand.
+-- statutory-retention clock (ADR-012). Fires on insert too, so a candidacy
+-- created directly as 'placed' (e.g. historical backfill) still gets its
+-- clock. Never set 'placed' as shorthand.
 create function candidacy_track_stage() returns trigger
 language plpgsql as $$
 begin
-  if new.stage is distinct from old.stage then
+  if tg_op = 'UPDATE' and new.stage is distinct from old.stage then
     new.stage_changed_at = now();
-    if new.stage = 'placed' and new.placed_at is null then
-      new.placed_at = now();
-    end if;
+  end if;
+  if new.stage = 'placed' and new.placed_at is null then
+    new.placed_at = now();
   end if;
   return new;
 end;
@@ -296,7 +298,7 @@ create trigger merge_queue_updated_at before update on merge_queue
 create trigger counterparty_queue_updated_at before update on counterparty_queue
   for each row execute function set_updated_at();
 
-create trigger candidacy_stage_tracking before update on candidacy
+create trigger candidacy_stage_tracking before insert or update on candidacy
   for each row execute function candidacy_track_stage();
 
 -- ---------------------------------------------------------------------------
