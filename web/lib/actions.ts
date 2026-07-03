@@ -167,7 +167,7 @@ async function attachEmployment(
 // ---------------------------------------------------------------------------
 
 const ActivityInput = z.object({
-  type: z.enum(["email", "meeting", "call", "note", "linkedin_message"]),
+  type: z.enum(["email", "meeting", "call", "note", "linkedin_message", "linkedin_post", "event"]),
   occurredAt: optional(z.string()),
   subject: optional(z.string().trim().max(300)),
   body: optional(z.string().trim().max(20000)),
