@@ -205,6 +205,20 @@ migrations (ci.yml "Mirror prod extension layout" step), so any function that
 forgets `extensions` in its pin fails in CI exactly as it would on prod; this
 register.
 
+**L-024 · 2026-07-03 · Mirroring prod means the defaults too, not just the objects.**
+The L-021 CI step created the `extensions` schema but the very next CI run
+failed anyway — in the behaviour-test FILE this time, whose bare `digest()`
+call couldn't resolve under CI's stock `"$user", public` search path. On prod
+that same bare call works, because Supabase sets the DATABASE default
+search_path to `"$user", public, extensions` (verified by read-back); the local
+gate replica passed only because it happened to set the same default. → An
+environment mirror that copies objects but not settings still diverges — the
+first fix reproduced prod's schema layout while silently keeping CI's stock
+search path. → When mirroring an environment, read the target's actual settings
+(`current_setting`, `pg_db_role_setting`) and replicate them, rather than
+stopping at the objects. → ci.yml's mirror step now also sets the database
+default search_path to prod's exact value; this register.
+
 **L-022 · 2026-07-03 · The AI-call log and its subject artifact can't be created in the same moment.**
 ADR-024 wants every `ai_usage_log` row to carry `source_ref` = the document id,
 but I1's whole design is that the CV parse happens BEFORE anything exists — the

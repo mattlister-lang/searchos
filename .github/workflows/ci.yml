@@ -36,7 +36,8 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
             "create schema extensions;
              create extension pgcrypto with schema extensions;
-             grant usage on schema extensions to public;"
+             grant usage on schema extensions to public;
+             alter database postgres set search_path to \"\$user\", public, extensions;"
       - name: Apply migrations in order
         env:
           PGPASSWORD: postgres
