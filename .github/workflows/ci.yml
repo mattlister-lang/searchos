@@ -24,6 +24,20 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - name: Mirror prod extension layout (L-021)
+        # Supabase pre-installs pgcrypto in the `extensions` schema, so our
+        # migrations' `create extension if not exists pgcrypto` no-ops there
+        # and pgcrypto is NOT on a (public, pg_temp) search path. Installing
+        # it the same way here means a function that forgets `extensions` in
+        # its pinned path fails in CI exactly as it would on prod.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c \
+            "create schema extensions;
+             create extension pgcrypto with schema extensions;
+             grant usage on schema extensions to public;
+             alter database postgres set search_path to \"\$user\", public, extensions;"
       - name: Apply migrations in order
         env:
           PGPASSWORD: postgres

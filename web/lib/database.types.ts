@@ -612,6 +612,7 @@ export type Database = {
           kind: Database["public"]["Enums"]["document_kind"]
           mandate_id: string | null
           mime_type: string | null
+          parsed_cv: Json | null
           parsed_text: string | null
           person_id: string | null
           storage_path: string
@@ -627,6 +628,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["document_kind"]
           mandate_id?: string | null
           mime_type?: string | null
+          parsed_cv?: Json | null
           parsed_text?: string | null
           person_id?: string | null
           storage_path: string
@@ -642,6 +644,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["document_kind"]
           mandate_id?: string | null
           mime_type?: string | null
+          parsed_cv?: Json | null
           parsed_text?: string | null
           person_id?: string | null
           storage_path?: string
@@ -1570,10 +1573,18 @@ export type Database = {
       }
     }
     Functions: {
+      ai_spend_this_month_gbp: { Args: never; Returns: number }
       erase_person: { Args: { p_person: string }; Returns: undefined }
       merge_people: {
         Args: { p_keep: string; p_remove: string }
         Returns: undefined
+      }
+      search_people_boolean: {
+        Args: { q: string }
+        Returns: {
+          person_id: string
+          rank: number
+        }[]
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
@@ -1808,3 +1819,4 @@ export const Constants = {
     },
   },
 } as const
+

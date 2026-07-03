@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AddCandidacyDialog, MandateStatusControl, MoveStageControl } from "@/components/forms/pipeline-forms";
+import { AddCandidacyDialog, MandateStatusControl } from "@/components/forms/pipeline-forms";
+import { JobKanban, type KanbanCard } from "@/components/job-kanban";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { db } from "@/lib/db";
 import { label, LIVE_STAGES, TERMINAL_STAGES } from "@/lib/domain";
@@ -41,10 +42,16 @@ export default async function JobPage({
   if (!mandate) notFound();
 
   const candidacies = mandate.candidacy ?? [];
-  const columns = LIVE_STAGES.map((stage) => ({
-    stage,
-    cards: candidacies.filter((c) => c.stage === stage),
-  }));
+  const cards: KanbanCard[] = candidacies
+    .filter((c) => (LIVE_STAGES as readonly string[]).includes(c.stage))
+    .map((c) => ({
+      candidacyId: c.id,
+      stage: c.stage,
+      personId: c.person?.id ?? null,
+      personName: c.person?.full_name ?? "—",
+      daysInStage: daysSince(c.stage_changed_at) ?? 0,
+      interviews: (c.interview ?? []).length,
+    }));
   const closed = candidacies.filter((c) =>
     (TERMINAL_STAGES as readonly string[]).includes(c.stage),
   );
@@ -102,48 +109,7 @@ export default async function JobPage({
 
       <div>
         <h2 className="mb-3 font-heading text-lg font-medium">Candidate pipeline</h2>
-        <div className="overflow-x-auto">
-          <div className="flex min-w-max gap-4">
-            {columns.map((col) => (
-              <div key={col.stage} className="w-60 shrink-0">
-                <div className="mb-2 flex items-center justify-between px-1">
-                  <span className="text-sm font-medium capitalize">{label(col.stage)}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {col.cards.length}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-2">
-                  {col.cards.map((c) => {
-                    const days = daysSince(c.stage_changed_at) ?? 0;
-                    return (
-                      <Card key={c.id} className="py-3">
-                        <CardContent className="px-3">
-                          <Link href={`/people/${c.person?.id}`}
-                            className="text-sm font-medium hover:underline">
-                            {c.person?.full_name}
-                          </Link>
-                          <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                            {days}d in stage{" "}
-                            {days > 14 && <Badge variant="outline">stale</Badge>}
-                          </p>
-                          {(c.interview ?? []).length > 0 && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {(c.interview ?? []).length} interview
-                              {(c.interview ?? []).length > 1 ? "s" : ""}
-                            </p>
-                          )}
-                          <div className="mt-2">
-                            <MoveStageControl candidacyId={c.id} stage={c.stage} />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <JobKanban cards={cards} />
       </div>
 
       {closed.length > 0 && (

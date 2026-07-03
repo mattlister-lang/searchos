@@ -7,7 +7,9 @@ import {
 } from "@/components/forms/candidacy-forms";
 import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
+import { StandardisedCv } from "@/components/standardised-cv";
 import { UploadCv } from "@/components/forms/upload-cv";
+import { ParsedCvSchema } from "@/lib/cv";
 import { db } from "@/lib/db";
 import { fmtDate } from "@/lib/format";
 import { label } from "@/lib/domain";
@@ -52,7 +54,7 @@ export default async function PersonPage({
         .limit(25),
       db
         .from("document")
-        .select("id, kind, filename, created_at, parsed_text")
+        .select("id, kind, filename, created_at, parsed_text, parsed_cv")
         .eq("person_id", id)
         .order("created_at", { ascending: false }),
     ]);
@@ -60,9 +62,13 @@ export default async function PersonPage({
   if (!person) notFound();
 
   const activities = (participation ?? [])
-    .map((p) => ({ role: p.role, ...(p.activity as any) }))
-    .filter((a) => a.id)
+    .flatMap((p) => (p.activity ? [{ role: p.role, ...p.activity }] : []))
     .sort((a, b) => (a.occurred_at < b.occurred_at ? 1 : -1));
+
+  // The newest CV with a structured extraction drives the standardised CV
+  // section (I1). Stored JSON is re-validated at render, never trusted blind.
+  const cvDoc = (documents ?? []).find((d) => d.kind === "cv" && d.parsed_cv !== null);
+  const parsedCv = cvDoc ? ParsedCvSchema.safeParse(cvDoc.parsed_cv) : null;
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -114,7 +120,7 @@ export default async function PersonPage({
           )}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {(person.person_email as any[]).map((e) => (
+          {person.person_email.map((e) => (
             <Badge key={e.email} variant="outline">
               {e.email}
             </Badge>
@@ -131,10 +137,10 @@ export default async function PersonPage({
           <CardTitle className="text-base">Experience</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {(person.employment as any[]).length === 0 && (
+          {person.employment.length === 0 && (
             <p className="text-sm text-muted-foreground">Nothing recorded.</p>
           )}
-          {(person.employment as any[]).map((e, i) => (
+          {person.employment.map((e, i) => (
             <div key={i} className="flex items-baseline justify-between text-sm">
               <span>
                 <span className="font-medium">{e.title ?? "Role unknown"}</span>{" "}
@@ -152,18 +158,22 @@ export default async function PersonPage({
         </CardContent>
       </Card>
 
+      {parsedCv?.success && (
+        <StandardisedCv cv={parsedCv.data} filename={cvDoc?.filename ?? null} />
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Candidacies</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {(person.candidacy as any[]).length === 0 && (
+          {person.candidacy.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Not on any mandate yet.
             </p>
           )}
-          {(person.candidacy as any[]).map((c, i) => (
-            <div key={c.id ?? i} className="rounded-md border p-3">
+          {person.candidacy.map((c) => (
+            <div key={c.id} className="rounded-md border p-3">
               <div className="flex items-baseline justify-between text-sm">
                 <span>
                   <Link href={`/jobs/${c.mandate?.id}`} className="font-medium hover:underline">
@@ -180,9 +190,9 @@ export default async function PersonPage({
                   </span>
                 </span>
               </div>
-              {(c.interview as any[])?.length > 0 && (
+              {c.interview.length > 0 && (
                 <div className="mt-2 flex flex-col gap-1.5">
-                  {(c.interview as any[])
+                  {[...c.interview]
                     .sort((a, b) => a.round - b.round)
                     .map((iv) => (
                       <div key={iv.id} className="flex items-center justify-between text-xs text-muted-foreground">

@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { addCandidacy, createMandate, moveStage, setMandateStatus } from "@/lib/actions";
 import { CANDIDACY_STAGES, label, MANDATE_STATUSES } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
+import { useConfirmableAction } from "@/lib/use-confirm-action";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/forms/confirm-dialog";
 import { FormDialog, Field, TextField } from "@/components/forms/form-dialog";
 import { PersonPicker } from "@/components/forms/person-picker";
 import { TagInput } from "@/components/forms/tag-input";
@@ -96,27 +93,16 @@ export function AddCandidacyDialog(props: {
   );
 }
 
-/** Stage mover with confirm-before-consequence — stateful beyond a plain
- *  form, so it composes the primitives rather than FormDialog. */
+/** Stage mover — the click/keyboard fallback beside the kanban drag path.
+ *  Both surfaces run the SAME confirm machine (useConfirmableAction), so a
+ *  regression or a move to placed asks first no matter how it was triggered. */
 export function MoveStageControl(props: { candidacyId: string; stage: string }) {
-  const router = useRouter();
-  const [confirm, setConfirm] = useState<{ message: string; stage: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function move(stage: string, confirmed = false) {
-    setPending(true);
-    setError(null);
-    const res = await moveStage({ candidacyId: props.candidacyId, stage, confirmed });
-    setPending(false);
-    if (res.ok) { setConfirm(null); router.refresh(); return; }
-    if ("needsConfirm" in res) setConfirm({ message: res.needsConfirm, stage });
-    else if ("error" in res) setError(res.error);
-  }
+  const move = useConfirmableAction<{ candidacyId: string; stage: string }>(moveStage);
 
   return (
     <>
-      <Select value={props.stage} onValueChange={(v) => v && move(v)}>
+      <Select value={props.stage}
+        onValueChange={(v) => v && void move.run({ candidacyId: props.candidacyId, stage: v })}>
         <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
         <SelectContent>
           {CANDIDACY_STAGES.map((s) => (
@@ -126,44 +112,21 @@ export function MoveStageControl(props: { candidacyId: string; stage: string }) 
           ))}
         </SelectContent>
       </Select>
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Are you sure?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{confirm?.message}</p>
-          <div className="flex gap-2">
-            <Button disabled={pending} onClick={() => confirm && move(confirm.stage, true)}>
-              Confirm
-            </Button>
-            <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {move.error && <p className="mt-1 text-xs text-destructive">{move.error}</p>}
+      <ConfirmDialog confirm={move.confirm} pending={move.pending} />
     </>
   );
 }
 
-/** Archive/close a job (UAT Q4). Same confirm-before-consequence shape as
+/** Archive/close a job (UAT Q4). Same confirm-before-consequence machine as
  *  MoveStageControl: closing an open job asks first, reopening/on-hold don't. */
 export function MandateStatusControl(props: { mandateId: string; status: string }) {
-  const router = useRouter();
-  const [confirm, setConfirm] = useState<{ message: string; status: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function set(status: string, confirmed = false) {
-    setPending(true);
-    setError(null);
-    const res = await setMandateStatus({ mandateId: props.mandateId, status, confirmed });
-    setPending(false);
-    if (res.ok) { setConfirm(null); router.refresh(); return; }
-    if ("needsConfirm" in res) setConfirm({ message: res.needsConfirm, status });
-    else if ("error" in res) setError(res.error);
-  }
+  const set = useConfirmableAction<{ mandateId: string; status: string }>(setMandateStatus);
 
   return (
     <>
-      <Select value={props.status} onValueChange={(v) => v && set(v)}>
+      <Select value={props.status}
+        onValueChange={(v) => v && void set.run({ mandateId: props.mandateId, status: v })}>
         <SelectTrigger className="h-8 w-36 text-xs capitalize"><SelectValue /></SelectTrigger>
         <SelectContent>
           {MANDATE_STATUSES.map((s) => (
@@ -173,19 +136,8 @@ export function MandateStatusControl(props: { mandateId: string; status: string 
           ))}
         </SelectContent>
       </Select>
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Are you sure?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">{confirm?.message}</p>
-          <div className="flex gap-2">
-            <Button disabled={pending} onClick={() => confirm && set(confirm.status, true)}>
-              Confirm
-            </Button>
-            <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {set.error && <p className="mt-1 text-xs text-destructive">{set.error}</p>}
+      <ConfirmDialog confirm={set.confirm} pending={set.pending} />
     </>
   );
 }
