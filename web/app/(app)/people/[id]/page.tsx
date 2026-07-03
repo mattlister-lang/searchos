@@ -1,4 +1,10 @@
 import { notFound } from "next/navigation";
+import {
+  InterviewOutcomeControl,
+  LogInterviewDialog,
+  OfferDialog,
+} from "@/components/forms/candidacy-forms";
+import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { UploadCv } from "@/components/forms/upload-cv";
 import { db } from "@/lib/db";
@@ -27,9 +33,12 @@ export default async function PersonPage({
         .from("person")
         .select(
           `id, full_name, location, profile, linkedin_url, erased_at, created_at,
+           seniority, functions, skills, sectors,
            person_email(email, is_primary),
            employment(title, is_current, start_date, end_date, company(name)),
-           candidacy(stage, stage_changed_at, placed_at, notes, mandate(title, company(name)))`,
+           candidacy(id, stage, stage_changed_at, placed_at, notes,
+                     mandate(title, company(name)),
+                     interview(id, round, kind, scheduled_at, outcome))`,
         )
         .eq("id", id)
         .maybeSingle(),
@@ -63,8 +72,29 @@ export default async function PersonPage({
           <div className="flex shrink-0 gap-2">
             <LogActivityDialog personId={person.id} contextLabel={person.full_name} />
             <UploadCv personId={person.id} />
+            <EditProfileDialog
+              personId={person.id}
+              seniority={person.seniority}
+              functions={person.functions ?? []}
+              skills={person.skills ?? []}
+              sectors={person.sectors ?? []}
+              location={person.location}
+            />
           </div>
         </div>
+        {(person.seniority || (person.skills ?? []).length > 0 || (person.sectors ?? []).length > 0) && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {person.seniority && (
+              <Badge className="capitalize">{String(person.seniority).replaceAll("_", " ")}</Badge>
+            )}
+            {(person.sectors ?? []).map((s: string) => (
+              <Badge key={s} variant="secondary">{s}</Badge>
+            ))}
+            {(person.skills ?? []).map((s: string) => (
+              <Badge key={s} variant="outline">{s}</Badge>
+            ))}
+          </div>
+        )}
         <p className="mt-1 text-sm text-muted-foreground">
           {person.location ?? ""}
           {person.linkedin_url && (
@@ -127,19 +157,41 @@ export default async function PersonPage({
             </p>
           )}
           {(person.candidacy as any[]).map((c, i) => (
-            <div key={i} className="flex items-baseline justify-between text-sm">
-              <span>
-                <span className="font-medium">{c.mandate?.title}</span>{" "}
-                <span className="text-muted-foreground">
-                  · {c.mandate?.company?.name}
+            <div key={c.id ?? i} className="rounded-md border p-3">
+              <div className="flex items-baseline justify-between text-sm">
+                <span>
+                  <span className="font-medium">{c.mandate?.title}</span>{" "}
+                  <span className="text-muted-foreground">
+                    · {c.mandate?.company?.name}
+                  </span>
                 </span>
-              </span>
-              <span className="flex items-center gap-2">
-                <Badge className="capitalize">{stageLabel(c.stage)}</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {fmtDate(c.stage_changed_at)}
+                <span className="flex items-center gap-2">
+                  <Badge className="capitalize">{stageLabel(c.stage)}</Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {fmtDate(c.stage_changed_at)}
+                  </span>
                 </span>
-              </span>
+              </div>
+              {(c.interview as any[])?.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {(c.interview as any[])
+                    .sort((a, b) => a.round - b.round)
+                    .map((iv) => (
+                      <div key={iv.id} className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="capitalize">
+                          Round {iv.round} · {String(iv.kind).replaceAll("_", " ")}
+                          {iv.scheduled_at ? ` · ${fmtDate(iv.scheduled_at)}` : ""}
+                        </span>
+                        <InterviewOutcomeControl interviewId={iv.id} outcome={iv.outcome} />
+                      </div>
+                    ))}
+                </div>
+              )}
+              <div className="mt-2 flex gap-2">
+                <LogInterviewDialog candidacyId={c.id} candidateName={person.full_name} />
+                <OfferDialog candidacyId={c.id} candidateName={person.full_name}
+                  mandateTitle={c.mandate?.title ?? ""} />
+              </div>
             </div>
           ))}
         </CardContent>

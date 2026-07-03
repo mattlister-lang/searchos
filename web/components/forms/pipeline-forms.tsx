@@ -24,7 +24,10 @@ export function NewMandateDialog() {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ companyName: "", title: "", brief: "" });
+  const [form, setForm] = useState({
+    companyName: "", title: "", brief: "",
+    seniority: "", location: "", salaryRange: "", skills: "",
+  });
 
   async function submit() {
     setPending(true);
@@ -55,6 +58,30 @@ export function NewMandateDialog() {
             <Label>Brief</Label>
             <Textarea rows={4} value={form.brief}
               onChange={(e) => setForm({ ...form, brief: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Seniority</Label>
+              <Input placeholder="director" value={form.seniority}
+                onChange={(e) => setForm({ ...form, seniority: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Location</Label>
+              <Input value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Salary range</Label>
+              <Input placeholder="£120-150k" value={form.salaryRange}
+                onChange={(e) => setForm({ ...form, salaryRange: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Skills (comma-sep)</Label>
+              <Input placeholder="ppa, origination" value={form.skills}
+                onChange={(e) => setForm({ ...form, skills: e.target.value })} />
+            </div>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button disabled={pending} onClick={submit}>
