@@ -79,15 +79,21 @@ searchos/
 ## Phase status
 
 **Phase 0 — in progress. Budget: 2 days.**
-- [x] Migrations 0001 (core schema) and 0002 (operational hardening) written
-      and verified against Postgres 16 + pgvector (behaviour tests for
-      `merge_people`, `erase_person` both paths, `similar_people`, triggers)
-- [ ] `supabase db push` against the Pro project — blocked until the
-      `SUPABASE_DB_URL` environment variable injects (new session); deploy is
-      the first action of the next session
-- [ ] Seed: `scripts/seed.ts` is filled with confirmed data (Matt, Amy Park /
-      Talent Lead / kraken.tech, Theo Elmer name-only) — runs immediately
-      after deploy. Still to confirm conversationally: Matt's LinkedIn, Theo's
+- [x] Migrations 0001 (core schema), 0002 (operational hardening) and 0003
+      (security hardening: RLS-on/no-policies, invoker views, pinned function
+      search paths) written and verified against local Postgres + pgvector
+      (behaviour tests for `merge_people`, `erase_person` both paths,
+      `similar_people`, triggers)
+- [x] Deployed to the Pro project 3 Jul 2026 (Postgres 17, eu-central-1) and
+      recorded in `schema_migrations`. Note: Claude sandboxes cannot reach
+      Postgres over TCP — deploys go via the Supabase Management API
+      migrations endpoint (equivalent to `db push`), authenticated by the
+      `SUPABASE_ACCESS_TOKEN` env var. Security advisors clean (INFO-level
+      `rls_enabled_no_policy` is the intended service-role-only design)
+- [x] Seed live: Matt (operator), Amy Park / Talent Lead / kraken.tech,
+      Theo Elmer (name-only), Kraken deal (negotiation), GeoPura deal
+      (qualified), domains offtakesearch.com + kraken.tech. Verified
+      idempotent. Still to confirm conversationally: Matt's LinkedIn, Theo's
       email, GeoPura domain + deal stage, priority-target list
 - [ ] Candidate pool CSV import — no CSV exists today; `scripts/import-csv.ts`
       is ready for a future LinkedIn export (dry-run first:
