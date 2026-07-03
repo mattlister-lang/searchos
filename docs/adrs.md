@@ -188,3 +188,40 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 **Decision.** Next.js App Router on Vercel, Tailwind, shadcn/ui components, living in `web/`. Dark theme built on the Offtake Search brand identity (near-black background, electric lime accent, Uncut Sans). The UI is strictly read-only, built against the views (`v_pipeline`, `v_deal_board`, `v_relationship_freshness`, `v_ai_spend`); every write continues to flow through MCP. Scaffolded with `create-next-app` + `shadcn init` when Phase 2 opens — not before.
 
 **Consequences.** No UI code exists until Phase 1's definition of done is met. When it does, the component decisions are already made and the data contract (the views) is already stable.
+
+---
+
+## ADR-018: Pipeline AI deferred — interactive Claude is the sole intelligence layer (amends ADR-005, ADR-010)
+
+**Context.** Matt's direction (3 Jul 2026): hold off on AI integrations. The goal is a first-class ATS/CRM that holds all the data and produces insight — not a metered pipeline. At current scale (hundreds of records) trigram search, structured SQL and Claude reading records interactively outperform embeddings anyway.
+
+**Decision.** The Phase 1 ingestion pipeline (Gmail/Granola cron, Haiku summarisation, Voyage embeddings) is deferred indefinitely. The schema keeps its nullable `vector(1024)` columns and `ai_usage_log` — dormant, costing nothing. Data enters conversationally ("log this call with Amy") and via CSV import; all intelligence (briefs, matching, pipeline review, digests) runs through interactive Claude via MCP at zero marginal cost. SQL insight views (migration 0004) carry the reporting load. Plain Gmail sync *without* AI processing remains an available middle path later, inside the ADR-011 boundary, if manual capture proves tedious.
+
+**Consequences.** Zero unattended API spend. The Granola spike (ADR-014 gate) is parked, not cancelled. Email history only enters the system when Matt logs it — accepted, revisitable.
+
+---
+
+## ADR-019: Productisation intent — deployment-per-firm, never shared-table tenancy
+
+**Context.** Long-term, SearchOS will be sold to other recruitment firms as a multi-tenant SaaS. Each rec firm is its own GDPR data controller; candidate data isolation is existential in this market, and the compliance machinery (suppression, erasure, statutory retention) is legally per-controller.
+
+**Decision.** SearchOS productises as **one deployment per client firm** — the same numbered migrations run into a fresh Supabase project per customer — never as rows-in-a-shared-database. No `tenant_id` is ever retrofitted onto this schema; the load-bearing global unique constraints (`person_email.email`, `company_domain.domain`, `(source, source_ref)`) stay as they are. The repo is the product template; Offtake's instance is customer zero and the permanent reference deployment. The MCP server (`docs/mcp-tools.md`) and the Phase 2 read UI are the product surface for customers. Firm-specific values (mailbox domain, sector taxonomy, stage labels) stay in data or MCP-layer config, never hardcoded.
+
+**Consequences.** Strong isolation story to sell against shared-tenancy competitors; per-project Supabase pricing keeps unit economics legible. ADR-016's gate stands unchanged: no productisation until the system has been boringly reliable for its one user for a full quarter. Kraken first.
+
+---
+
+## ADR-020: Security & compliance baseline — build to certifiable standard
+
+**Context.** The bar is a company that could pass SOC 2 Type II and ISO 27001 audits and sell to security-conscious firms. Those are *organisational* certifications — audits of processes over time, not code properties — and a company of one cannot meaningfully hold them yet. What it can do is build the technical controls and evidence trails now so that certification later is paperwork, not re-engineering. GDPR compliance, by contrast, applies in full today. OWASP practices apply to each attack surface as it comes into existence.
+
+**Decision.**
+1. **Access control.** Service-role-only access; RLS enabled on every table with no policies (migration 0003). Every new table enables RLS in the same migration that creates it. Secrets live in env vars only, never in the repo, never printed. The service role key and access tokens are rotated on any suspected exposure (precedent: DB password rotated 3 Jul 2026).
+2. **Audit trail (SOC 2 change-tracking evidence).** Migration 0005 adds an append-only `audit_log` populated by row-change triggers on every business table. GDPR takes precedence over audit retention: `erase_person()` purges audit entries referencing the erased person — an audit log must never resurrect erased data. Merge recovery evidence stays in `merge_log`; erasure evidence is the suppression-list entry.
+3. **Change management.** Schema changes only via numbered migrations through PRs (golden rule 3); behaviour tests run against a real Postgres before anything touches prod; Supabase security advisors run after every deploy and ERROR-level findings are fixed before the work is called done (precedent: 0003).
+4. **GDPR (live obligations).** ICO registration before go-live; privacy notice naming processors (Supabase, Google, Anthropic, Voyage) before systematic outreach; erasure/suppression/statutory-retention machinery already in schema; quarterly retention review (`v_retention_review`, `v_statutory_purge`).
+5. **Resilience.** The nightly off-platform backup (ADR-014) is a required control before any second firm's data is held; currently deferred by Matt for the single-tenant phase, revisit at go-live. Restore is tested before backup is called done.
+6. **OWASP.** Applies per surface as built: parameterised SQL everywhere (already the case in scripts via tagged templates), dependency pinning, ASVS-aligned review for the MCP server and Phase 2 UI before they ship. No dynamic SQL in functions.
+7. **ISO 9001 (quality).** Served by the existing discipline: ADRs as controlled decisions, migrations as controlled changes, behaviour tests as verification records, weekly hygiene as management review. No certification pursued until there is an organisation to certify.
+
+**Consequences.** "Certifiable-by-construction" habits from day one at near-zero cost. When a prospective customer's security questionnaire arrives, the answers already exist in this file, the migration history, and the audit log.

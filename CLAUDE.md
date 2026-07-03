@@ -4,8 +4,9 @@ Recruitment/exec search CRM+ATS for Offtake Search (Hy Works Ltd). Single-tenant
 MCP-first, zero manual data entry. Supabase Postgres is a deliberately boring
 system of record; all intelligence lives in the layer around the database, never in it.
 
-**Read `docs/adrs.md` before any non-trivial work. ADRs 001–017 are binding until
+**Read `docs/adrs.md` before any non-trivial work. ADRs 001–020 are binding until
 superseded by a numbered ADR. Do not improvise around them.**
+**Operating routines live in `docs/playbook.md`.**
 
 ## Golden rules — the operator contract (ADR-013)
 
@@ -53,9 +54,11 @@ superseded by a numbered ADR. Do not improvise around them.**
 - Interface: MCP. Interactive work through Claude (subscription, zero marginal
   cost); a dedicated TypeScript MCP server in `mcp-server/` becomes the sole
   write path in Phase 1. Tool contract: `docs/mcp-tools.md`.
-- Pipeline AI: Claude Haiku for unattended summarisation; Voyage voyage-3.5
-  (1024 dims) for embeddings. Every unattended API call logs to `ai_usage_log`.
-  Budget: £20/month alert, £50 hard stop — pause the pipeline, don't spend past it.
+- Pipeline AI: DEFERRED (ADR-018). No unattended API spend; all intelligence
+  runs through interactive Claude via MCP and the SQL insight views (0004).
+  If the pipeline is ever switched on: Haiku for summarisation, Voyage
+  voyage-3.5 (1024 dims) for embeddings, every call logged to `ai_usage_log`,
+  £20/month alert, £50 hard stop.
 - UI (Phase 2 only, ADR-017): Next.js App Router + Tailwind + shadcn/ui in
   `web/`, read-only against the views, Offtake brand dark theme. Do not scaffold
   before Phase 1's definition of done is met.
@@ -79,11 +82,12 @@ searchos/
 ## Phase status
 
 **Phase 0 — in progress. Budget: 2 days.**
-- [x] Migrations 0001 (core schema), 0002 (operational hardening) and 0003
+- [x] Migrations 0001 (core schema), 0002 (operational hardening), 0003
       (security hardening: RLS-on/no-policies, invoker views, pinned function
-      search paths) written and verified against local Postgres + pgvector
-      (behaviour tests for `merge_people`, `erase_person` both paths,
-      `similar_people`, triggers)
+      search paths), 0004 (insight views) and 0005 (audit log + GDPR-correct
+      erasure purge) written and verified against local Postgres + pgvector
+      (13 behaviour tests incl. `merge_people`, `erase_person` both paths,
+      audit purge, `similar_people`, triggers)
 - [x] Deployed to the Pro project 3 Jul 2026 (Postgres 17, eu-central-1) and
       recorded in `schema_migrations`. Note: Claude sandboxes cannot reach
       Postgres over TCP — deploys go via the Supabase Management API
@@ -102,10 +106,17 @@ searchos/
       `.github/workflows/backup.yml` is ready when wanted: create the R2
       bucket (or swap vendor) and add the repo secrets named in its header
 
-**Phase 1 gate:** a Granola access spike must pass before any pipeline
-architecture is written (ADR-014).
-**Phase 1 done =** every Kraken email and meeting auto-logged with zero manual
-entry (ADR-016). That is the only definition that counts.
+**Current phase — Operate (ADR-018):** the pipeline is deferred; data enters
+conversationally and via CSV, intelligence comes from Claude + the insight
+views (`v_next_actions`, `v_funnel`, `v_stage_dwell`, `v_activity_pulse`,
+`v_fee_income`), every mutation lands in `audit_log` (ADR-020). Migrations
+0001–0005 are live on the Pro project.
+**Long term (ADR-019):** productise as deployment-per-firm SaaS — never
+shared-table tenancy, no `tenant_id` retrofit. ADR-016's gate stands: boringly
+reliable for one user for a full quarter first.
+**If the pipeline is revived:** the Granola access spike (ADR-014) gates any
+pipeline architecture; "done" = every Kraken email and meeting auto-logged
+with zero manual entry (ADR-016).
 
 **Weekly hygiene review (recurring):** pending merges, counterparty queue,
 dead letters, `v_ai_spend`, freshness report.
