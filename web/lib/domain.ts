@@ -133,3 +133,11 @@ export function asMember<T extends readonly string[]>(
 export function label(value: string): string {
   return value.replaceAll("_", " ");
 }
+
+/** Domain list → Select options, labelled the same way as everywhere else.
+ *  Lives here (not in the client FilterBar module) because server pages call
+ *  it during render — client-module exports throw when called on the server,
+ *  and only at request time on force-dynamic pages (L-025). */
+export function toOptions(values: readonly string[]): { value: string; label: string }[] {
+  return values.map((v) => ({ value: v, label: label(v) }));
+}

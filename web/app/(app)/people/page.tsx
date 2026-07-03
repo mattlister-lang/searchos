@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { AddPersonDialog } from "@/components/forms/add-person-dialog";
-import { FilterBar, toOptions } from "@/components/filter-bar";
+import { FilterBar } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { asMember, SECTOR_TAXONOMY, SENIORITY_LEVELS } from "@/lib/domain";
+import { asMember, SECTOR_TAXONOMY, SENIORITY_LEVELS, toOptions } from "@/lib/domain";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {

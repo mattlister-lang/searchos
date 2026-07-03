@@ -219,6 +219,24 @@ search path. → When mirroring an environment, read the target's actual setting
 stopping at the objects. → ci.yml's mirror step now also sets the database
 default search_path to prod's exact value; this register.
 
+**L-025 · 2026-07-04 · A client-module export called from a server page passes the build and dies on the first real request.**
+R2's `toOptions()` lived in filter-bar.tsx (`"use client"`) and the four list
+pages called it during server render. In production every one of those pages
+threw "Attempted to call toOptions() from the server but toOptions is on the
+client" — Matt found it in UAT; search and dashboard (no FilterBar) worked, so
+half the app was down while the build stayed green. → Calling (not rendering)
+a client-module export from a server component is an RSC boundary violation
+that only materialises AT REQUEST TIME on force-dynamic pages — `next build`
+renders nothing dynamic, so the gate's independent build proves compilation,
+not that pages serve. → Client modules export components and hooks ONLY;
+pure helpers live in lib/ (server-safe) even when they feel like they belong
+next to the component. And build-green is not page-serves — post-deploy, load
+every changed route once (Vercel runtime logs via get_runtime_errors make the
+failure obvious in seconds). → toOptions moved to lib/domain.ts; the sweep
+(grep client modules for non-component exports) found no other instance;
+engineering.md DoD gains a "changed routes load after deploy" check; this
+register.
+
 **L-022 · 2026-07-03 · The AI-call log and its subject artifact can't be created in the same moment.**
 ADR-024 wants every `ai_usage_log` row to carry `source_ref` = the document id,
 but I1's whole design is that the CV parse happens BEFORE anything exists — the

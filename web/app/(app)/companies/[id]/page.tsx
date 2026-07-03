@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EditCompanyDialog } from "@/components/forms/edit-company-dialog";
+import { EnrichCompanyDialog } from "@/components/forms/enrich-company-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { db } from "@/lib/db";
 import { label } from "@/lib/domain";
@@ -48,6 +49,7 @@ export default async function CompanyPage({
         <div className="flex items-start justify-between gap-4">
           <h1 className="font-heading text-2xl font-semibold">{company.name}</h1>
           <div className="flex shrink-0 gap-2">
+            <EnrichCompanyDialog companyId={company.id} />
             <EditCompanyDialog companyId={company.id} status={company.status}
               sectors={company.sectors ?? []} notes={company.notes} />
             <LogActivityDialog companyId={company.id} contextLabel={company.name} />

@@ -130,7 +130,10 @@ to include `extensions` — the erase_person/pgcrypto prod fix, L-021/L-024).
 In-app AI is live per ADR-024: CV parsing runs on Haiku via `web/lib/ai.ts`
 (the only Claude API module) once `ANTHROPIC_API_KEY` is set in Vercel server
 env; every call is logged to `ai_usage_log` under the £20 alert / £50 hard
-stop.
+stop. Apollo company enrichment (`web/lib/apollo.ts`, the only Apollo module)
+activates the company-page Enrich button once `APOLLO_API_KEY` is set in
+Vercel server env — fetch is an explicit click (credits are metered), preview
+before write, appends to notes only.
 **Long term (ADR-019):** productise as deployment-per-firm SaaS — never
 shared-table tenancy, no `tenant_id` retrofit. ADR-016's gate stands: boringly
 reliable for one user for a full quarter first.
@@ -144,6 +147,6 @@ dead letters, `v_ai_spend`, freshness report.
 ## Secrets
 
 `.env` only, gitignored: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`. Never committed, never printed in
-output or logs, never hardcoded. The service role key is god mode — treat it
-accordingly.
+`ANTHROPIC_API_KEY`, `APOLLO_API_KEY`, `VOYAGE_API_KEY`. Never committed,
+never printed in output or logs, never hardcoded. The service role key is god
+mode — treat it accordingly.

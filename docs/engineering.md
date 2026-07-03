@@ -114,6 +114,11 @@ database accepting values the app cannot send is a defect (L-005).
       regenerated; deployed via Management API; advisors clean
 - [ ] Cross-links added for any new entity/reference
 - [ ] `next build` + typecheck green; auth gate unaffected
+- [ ] After the production deploy, every changed route LOADS — build-green is
+      compilation, not serving; force-dynamic pages only fail at request time
+      (L-025). Check Vercel runtime errors if anything is doubtful
+- [ ] Client modules (`"use client"`) export components/hooks only — helpers
+      that server pages call live in `lib/` (L-025)
 - [ ] **Learnings recorded in `docs/learnings.md`** — or the PR states
       "no learnings" and why
 - [ ] CLAUDE.md / engineering.md updated if behaviour or conventions changed
