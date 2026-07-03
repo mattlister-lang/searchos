@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { AddPersonDialog } from "@/components/forms/add-person-dialog";
+import { FilterBar, toOptions } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { Badge } from "@/components/ui/badge";
+import { asMember, SECTOR_TAXONOMY, SENIORITY_LEVELS } from "@/lib/domain";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,9 +19,12 @@ export const dynamic = "force-dynamic";
 export default async function People({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; seniority?: string; sector?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, seniority: rawSeniority, sector: rawSector } = await searchParams;
+  const seniority = asMember(SENIORITY_LEVELS, rawSeniority);
+  const sector = asMember(SECTOR_TAXONOMY, rawSector);
+
   let query = db
     .from("person")
     .select(
@@ -30,6 +34,8 @@ export default async function People({
     .order("full_name")
     .limit(200);
   if (q) query = query.ilike("full_name", `%${q}%`);
+  if (seniority) query = query.eq("seniority", seniority);
+  if (sector) query = query.contains("sectors", [sector]);
   const { data } = await query;
   const people = data ?? [];
 
@@ -39,11 +45,19 @@ export default async function People({
         <h1 className="font-heading text-2xl font-semibold">People</h1>
         <div className="flex items-center gap-2">
           <form method="get" className="w-64">
+            {/* preserve active filters when the name search submits (GET) */}
+            {seniority && <input type="hidden" name="seniority" value={seniority} />}
+            {sector && <input type="hidden" name="sector" value={sector} />}
             <Input name="q" placeholder="Search names…" defaultValue={q ?? ""} />
           </form>
           <AddPersonDialog />
         </div>
       </div>
+
+      <FilterBar filters={[
+        { param: "seniority", label: "Seniority", options: toOptions(SENIORITY_LEVELS) },
+        { param: "sector", label: "Sector", options: toOptions(SECTOR_TAXONOMY) },
+      ]} />
 
       <Card>
         <CardContent>

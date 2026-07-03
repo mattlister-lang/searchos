@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DealDialog, NewCompanyDialog } from "@/components/forms/deal-dialogs";
-import { OPEN_DEAL_STAGES } from "@/lib/domain";
+import { FilterBar, toOptions } from "@/components/filter-bar";
+import { asMember, DEAL_STAGES, DEAL_STAGE_WEIGHTS, OPEN_DEAL_STAGES } from "@/lib/domain";
 import { db } from "@/lib/db";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,23 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function Deals() {
+/** Win probability for a deal stage — 0 for an unknown/absent stage. */
+const weightFor = (stage: string | null | undefined) =>
+  DEAL_STAGE_WEIGHTS[stage as (typeof DEAL_STAGES)[number]] ?? 0;
+
+export default async function Deals({
+  searchParams,
+}: {
+  searchParams: Promise<{ stage?: string }>;
+}) {
+  const sp = await searchParams;
+  const stage = asMember(DEAL_STAGES, sp.stage);
+
+  let boardQuery = db.from("v_deal_board").select("*");
+  if (stage) boardQuery = boardQuery.eq("stage", stage);
+
   const [board, pulse] = await Promise.all([
-    db.from("v_deal_board").select("*"),
+    boardQuery,
     db.from("v_activity_pulse").select("*"),
   ]);
   const pulseByCompany = new Map(
@@ -28,6 +43,15 @@ export default async function Deals() {
   const open = deals.filter((d) => (OPEN_DEAL_STAGES as readonly string[]).includes(d.stage ?? ""));
   const closed = deals.filter((d) => !(OPEN_DEAL_STAGES as readonly string[]).includes(d.stage ?? ""));
 
+  // Commercial view (P1): weighted forecast over the open deals in scope.
+  const openPipeline = open.reduce((sum, d) => sum + (d.value ?? 0), 0);
+  const weightedForecast = open.reduce((sum, d) => sum + (d.value ?? 0) * weightFor(d.stage), 0);
+  const stats = [
+    { label: "Open pipeline", value: fmtMoney(openPipeline) },
+    { label: "Weighted forecast", value: fmtMoney(weightedForecast) },
+    { label: "Open deals", value: String(open.length) },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -36,6 +60,25 @@ export default async function Deals() {
           <NewCompanyDialog />
           <DealDialog />
         </div>
+      </div>
+
+      <FilterBar filters={[{ param: "stage", label: "Stage", options: toOptions(DEAL_STAGES) }]} />
+
+      <div className="grid grid-cols-3 gap-4">
+        {stats.map((s) => (
+          <Card key={s.label}>
+            <CardHeader className="pb-1">
+              <CardTitle className="text-sm font-normal text-muted-foreground">
+                {s.label}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <span className="font-heading text-2xl font-semibold tabular-nums">
+                {s.value}
+              </span>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Card>
@@ -50,7 +93,9 @@ export default async function Deals() {
                 <TableHead>Company</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Stage</TableHead>
-                <TableHead>Value</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead className="text-right">Win %</TableHead>
+                <TableHead className="text-right">Weighted</TableHead>
                 <TableHead>Next step</TableHead>
                 <TableHead className="text-right">Pulse</TableHead>
                 <TableHead className="text-right">Updated</TableHead>
@@ -60,6 +105,7 @@ export default async function Deals() {
             <TableBody>
               {open.map((d) => {
                 const p = pulseByCompany.get(d.company);
+                const w = weightFor(d.stage);
                 return (
                   <TableRow key={d.deal_id}>
                     <TableCell className="font-medium">{d.name}</TableCell>
@@ -80,7 +126,11 @@ export default async function Deals() {
                     <TableCell>
                       <Badge className="capitalize">{d.stage}</Badge>
                     </TableCell>
-                    <TableCell className="tabular-nums">{fmtMoney(d.value)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtMoney(d.value)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{Math.round(w * 100)}%</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {d.value == null ? "—" : fmtMoney(d.value * w)}
+                    </TableCell>
                     <TableCell>
                       {d.next_step ?? (
                         <Badge variant="destructive">missing</Badge>

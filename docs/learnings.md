@@ -146,3 +146,18 @@ build+typecheck as the floor; treat `eslint` (react-hooks) as an additional
 gate and lint the changed files every PR. (Note: pre-existing
 `no-explicit-any` errors already sit in `people/[id]/page.tsx` — separate debt,
 untouched here.)
+
+**L-018 · 2026-07-03 · Typed client can't express an array-column "not empty" filter.**
+`suggestTags` (Q6) first tried `.neq("skills", "{}")` to skip empty arrays
+before flattening; `next build` failed typecheck — the generated types model a
+`string[]` column's `.neq` value as `string[]`, so the `'{}'` literal PostgREST
+actually needs is rejected, and passing `[]` instead would string-interpolate to
+an empty value (`skills=neq.`), not `{}`. → supabase-js `.eq/.neq` build the
+querystring by interpolation and the generated types don't model the array
+literal syntax, so there is no type-safe way to write `<> '{}'` without a banned
+`as unknown as` cast. → For array columns don't reach for `.eq/.neq` with
+literals; use the set operators (`.contains/.overlaps`, which format `{}`
+correctly — as the Q3 sector filters do) or filter in TS. Here the guard was a
+pure ≤200-row optimisation, so fetch-and-dedupe in TS is both correct and
+simpler. → `suggestTags` flattens/dedupes/prefix-filters in TS (lib/actions.ts);
+this register.

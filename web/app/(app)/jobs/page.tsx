@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { NewMandateDialog } from "@/components/forms/pipeline-forms";
+import { FilterBar, toOptions } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { label, TERMINAL_STAGES } from "@/lib/domain";
+import { asMember, label, MANDATE_STATUSES, TERMINAL_STAGES } from "@/lib/domain";
 import { fmtDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,11 +12,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function Jobs() {
-  const { data } = await db
+export default async function Jobs({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const sp = await searchParams;
+  const status = asMember(MANDATE_STATUSES, sp.status);
+
+  let query = db
     .from("mandate")
     .select("id, title, status, seniority, location, opened_at, company(id, name), candidacy(stage)")
     .order("opened_at", { ascending: false });
+  if (status) query = query.eq("status", status);
+  const { data } = await query;
   const mandates = data ?? [];
 
   return (
@@ -24,6 +34,8 @@ export default async function Jobs() {
         <h1 className="font-heading text-2xl font-semibold">Jobs</h1>
         <NewMandateDialog />
       </div>
+
+      <FilterBar filters={[{ param: "status", label: "Status", options: toOptions(MANDATE_STATUSES) }]} />
 
       <Card>
         <CardContent>

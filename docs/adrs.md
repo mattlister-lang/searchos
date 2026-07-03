@@ -265,3 +265,17 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 5. **Plan before build** for anything non-trivial: layers touched, components reused, tests extended — written down before code. Velocity is not progress.
 
 **Consequences.** Slightly slower feature starts; drastically cheaper feature N+1. The register is seeded with fourteen real entries from day one — the wisdom starts true, not aspirational.
+
+---
+
+## ADR-024: In-app AI — metered Claude API inside the product (supersedes part of ADR-018)
+
+**Context.** Matt approved in-app AI (3 Jul 2026) to unlock CV-first candidate creation (product brief §10 I1): standardising the infinite variety of CV formats requires LLM structured extraction — heuristics cannot do it. Later consumers: match rationales, shortlist briefs, summaries.
+
+**Decision.**
+1. The web app may call the Claude API **server-side only** (`ANTHROPIC_API_KEY` in Vercel server env, never exposed to the browser, never in the repo). Model policy: the cheapest model that does the job — extraction starts on Haiku; anything needing more reasoning is justified per-feature in an ADR or the brief.
+2. **ADR-015's cost discipline applies unchanged and is enforced in code**: every call is logged to `ai_usage_log` (provider, model, tokens, cost_gbp); before each call the current month's spend is checked — ≥ £50 the call is refused with a clear error (hard stop), ≥ £20 the response carries a warning (alert). `v_ai_spend` surfaces it; the weekly hygiene review reads it.
+3. Interactive intelligence through Claude conversations stays free-tier-first: the app calls the API only where the product needs it *inside* the workflow (parsing a CV on upload), not as a general chat.
+4. ADR-018's prohibition on **unattended pipeline** spend still stands — in-app calls are user-initiated actions, not cron jobs.
+
+**Consequences.** CV extraction at pennies per document under hard caps. The person record becomes the standardised CV: extraction populates employment history, skills, seniority, summary — one uniform layout on the person page regardless of source formatting, original file always attached. Requires Matt to add `ANTHROPIC_API_KEY` to Vercel env.
