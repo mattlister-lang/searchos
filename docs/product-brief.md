@@ -158,3 +158,71 @@ Person-centric core, resolution machinery, merge/erasure + GDPR/statutory
 paths, audit trail, suppression, insight views, auth model, deployment
 pipeline (Vercel + Supabase, migrations-only). The brief validates the
 foundations — everything above *extends*, nothing rips out.
+
+---
+
+## 10. UAT feedback — round 1 (Matt, 3 Jul 2026, post-IA build)
+
+Verbatim-in-spirit backlog from first real click-through. Priority ordering
+agreed in conversation; each lands via the engineering.md workflow.
+
+### Bugs
+- **B1** New-company dialog: pre-filled status renders lowercase ("prospect")
+  while the dropdown list capitalizes — the select trigger doesn't apply the
+  same label treatment. *(fixed same day)*
+
+### Quick wins (no schema, no AI)
+- **Q1 Person picker = search, not dropdown** — add-candidate must scale to
+  thousands: typeahead search (3+ chars) against people, everywhere a person
+  is picked.
+- **Q2 Search typeahead** — master search previews grouped results after ~3
+  characters, keyboard-navigable; Enter → full results page.
+- **Q3 Filters on every list page** — jobs, pipeline, companies, deals,
+  people: filter by status/stage/sector/seniority/location etc.
+- **Q4 Archive/close jobs** — set mandate status (completed/cancelled/
+  on_hold) from the job page with confirm; archived jobs leave the pipeline
+  but stay linkable.
+- **Q5 Edit company** — status, sectors, notes, domains editable from the
+  company page.
+- **Q6 Tag inputs autocomplete** — skills/sectors/functions inputs suggest
+  existing values as clickable chips after a few characters; prevents
+  taxonomy drift ("hydrogen" vs "hydrogn").
+
+### Product-shaping
+- **P1 Deals = commercial view; Jobs = operational view.** A deal is the fee
+  lens on the same engagement; winning a deal converts it into a job
+  (mandate.deal_id already links them — add the convert flow). Deals page
+  gains **stage-weighted win probability** and a weighted-pipeline forecast
+  (each deal stage carries a win %; Σ value × weight = expected fees).
+- **P2 Pipeline page slims down** — top-line stats per job (live count,
+  stage distribution, **chance-to-fill %** weighted by candidacy stages)
+  with the full kanban living on the job page. Stage weights start as
+  domain constants; tune against reality later.
+- **P3 Kanban drag & drop** — drag cards between stage columns (same
+  confirm-before-consequence rules on drop).
+- **P4 Job page sub-features (explore)** — shortlist builder + client-brief
+  export, job-scoped documents (spec), client contacts on the job, timeline,
+  notes; candidate comparison.
+
+### Intelligence (needs the in-app AI decision — supersedes part of ADR-018)
+- **I1 CV-first candidate creation** — drag-drop a CV onto Add Person: parse
+  → structured extraction (name, contacts, employment history with titles/
+  employers/dates, skills, summary) → prefill the person + employment +
+  taxonomy, attach the file, and render a **standardised CV** on the person
+  page (uniform layout regardless of source formatting; original still
+  downloadable). Text extraction exists (Phase A); *standardisation requires
+  LLM structured extraction* — pennies per CV under the ADR-015 caps, logged
+  to ai_usage_log.
+- **I2 Company enrichment** — investigate Apollo (already connected via MCP;
+  org enrichment endpoints exist and are within existing plan credits)
+  before buying anything else (Crunchbase et al.). Enrich on demand from the
+  company page: size, industry, description, socials.
+- **I3 Boolean search on people** — AND/OR/NOT over names, titles, skills,
+  CV text (Postgres websearch_to_tsquery over parsed_text + fields).
+
+### Sequencing
+1. **R1**: B1 + Q1 + Q2 + Q4 + Q5 (make daily driving frictionless)
+2. **R2**: Q3 + Q6 + P1 + P2 (filters, tags, commercial/operational split,
+   probability weighting)
+3. **R3**: P3 + I1 + I3 (drag-drop; CV pipeline once the AI ADR is agreed)
+4. **R4**: P4 + I2 (job-page depth, enrichment)

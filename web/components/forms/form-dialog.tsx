@@ -84,7 +84,9 @@ export function SelectField(props: {
   return (
     <Field label={props.label}>
       <Select value={props.value} onValueChange={(v) => v && props.onChange(v)}>
-        <SelectTrigger>
+        {/* capitalize on the trigger too — the selected value must render
+            exactly like the option list (UAT B1) */}
+        <SelectTrigger className="capitalize">
           <SelectValue placeholder={props.placeholder} />
         </SelectTrigger>
         <SelectContent>
