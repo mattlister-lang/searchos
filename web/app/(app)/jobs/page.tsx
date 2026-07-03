@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { NewMandateDialog } from "@/components/forms/pipeline-forms";
-import { FilterBar, toOptions } from "@/components/filter-bar";
+import { FilterBar } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { asMember, label, MANDATE_STATUSES, TERMINAL_STAGES } from "@/lib/domain";
+import { asMember, label, MANDATE_STATUSES, TERMINAL_STAGES, toOptions } from "@/lib/domain";
 import { fmtDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";

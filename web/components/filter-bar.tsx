@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { label as domainLabel } from "@/lib/domain";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -11,6 +10,11 @@ import {
  * page. Each filter maps a URL param to a Select; changing it router.replaces
  * the URL and the server page re-reads searchParams. First and only home for
  * this pattern (engineering.md §3): pages describe filters, this renders them.
+ *
+ * This is a client module: only components may be exported. Helpers the server
+ * pages CALL (like toOptions) live in lib/domain.ts — calling a client-module
+ * export during server render throws at request time, invisible to the build
+ * because these pages are force-dynamic (L-025).
  */
 export type FilterSpec = {
   param: string;
@@ -21,11 +25,6 @@ export type FilterSpec = {
 /** Sentinel for the "any value" option — clears the param. Never a real value
  *  (Base UI Select needs a concrete value; an empty string is ambiguous). */
 const ANY = "__any__";
-
-/** Domain list → Select options, labelled the same way as everywhere else. */
-export function toOptions(values: readonly string[]): { value: string; label: string }[] {
-  return values.map((v) => ({ value: v, label: domainLabel(v) }));
-}
 
 export function FilterBar({ filters }: { filters: FilterSpec[] }) {
   const router = useRouter();

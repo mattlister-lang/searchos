@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { DealDialog, NewCompanyDialog } from "@/components/forms/deal-dialogs";
-import { FilterBar, toOptions } from "@/components/filter-bar";
-import { asMember, DEAL_STAGES, DEAL_STAGE_WEIGHTS, OPEN_DEAL_STAGES } from "@/lib/domain";
+import { FilterBar } from "@/components/filter-bar";
+import { asMember, DEAL_STAGE_WEIGHTS, DEAL_STAGES, OPEN_DEAL_STAGES, toOptions } from "@/lib/domain";
 import { db } from "@/lib/db";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { NewCompanyDialog } from "@/components/forms/deal-dialogs";
-import { FilterBar, toOptions } from "@/components/filter-bar";
+import { FilterBar } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { asMember, COMPANY_STATUSES, label, SECTOR_TAXONOMY } from "@/lib/domain";
+import { asMember, COMPANY_STATUSES, label, SECTOR_TAXONOMY, toOptions } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {

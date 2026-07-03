@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { CompanyEnrichmentSchema, enrichOrganization, type CompanyEnrichment } from "@/lib/apollo";
 import { requireUser } from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
@@ -975,4 +976,81 @@ export async function updateCompany(raw: unknown): Promise<ActionResult> {
   revalidatePath(`/companies/${c.companyId}`);
   revalidatePath("/companies");
   return { ok: true, id: c.companyId };
+}
+
+// ---------------------------------------------------------------------------
+// I2 — Apollo company enrichment. Two steps, human in the middle (same shape
+// as CV parsing): fetchCompanyEnrichment costs one Apollo credit and returns
+// a preview — nothing is written; applyCompanyEnrichment runs on the
+// operator's confirm and appends a dated block to the company notes. The
+// audit trail comes for free (company UPDATE lands in audit_log, 0005).
+// ---------------------------------------------------------------------------
+
+export type EnrichPreviewResult =
+  | { ok: true; enrichment: CompanyEnrichment; domain: string }
+  | { ok: false; error: string };
+
+const EnrichFetchInput = z.object({ companyId: z.string().uuid() });
+
+export async function fetchCompanyEnrichment(raw: unknown): Promise<EnrichPreviewResult> {
+  await requireUser();
+  const parsed = EnrichFetchInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const { data: domains } = await db
+    .from("company_domain")
+    .select("domain")
+    .eq("company_id", parsed.data.companyId)
+    .limit(1);
+  const domain = domains?.[0]?.domain;
+  if (!domain) {
+    return { ok: false, error: "Apollo enriches by domain — add the company's domain first (Edit company)." };
+  }
+
+  const result = await enrichOrganization(domain);
+  if (!result.ok) return result;
+  return { ok: true, enrichment: result.enrichment, domain };
+}
+
+const EnrichApplyInput = z.object({
+  companyId: z.string().uuid(),
+  enrichment: CompanyEnrichmentSchema,
+});
+
+export async function applyCompanyEnrichment(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = EnrichApplyInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { companyId, enrichment: e } = parsed.data;
+
+  const { data: company } = await db
+    .from("company")
+    .select("notes")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (!company) return { ok: false, error: "Company not found." };
+
+  const lines = [
+    `— Apollo enrichment (${new Date().toISOString().slice(0, 10)}) —`,
+    e.industry && `Industry: ${e.industry}`,
+    e.estimated_num_employees && `Employees: ~${e.estimated_num_employees}`,
+    e.founded_year && `Founded: ${e.founded_year}`,
+    (e.city || e.country) && `HQ: ${[e.city, e.country].filter(Boolean).join(", ")}`,
+    e.linkedin_url && `LinkedIn: ${e.linkedin_url}`,
+    e.keywords?.length && `Keywords: ${e.keywords.slice(0, 12).join(", ")}`,
+    e.short_description && `About: ${e.short_description}`,
+  ].filter(Boolean) as string[];
+  if (lines.length <= 1) return { ok: false, error: "Apollo returned nothing worth saving." };
+
+  // Append, never clobber — and stay inside the 5000-char notes budget the
+  // edit form enforces, trimming the enrichment block, not Matt's own notes.
+  const existing = company.notes ? `${company.notes}\n\n` : "";
+  const notes = (existing + lines.join("\n")).slice(0, 5000);
+
+  const { error } = await db.from("company").update({ notes }).eq("id", companyId);
+  if (error) return { ok: false, error: "Update failed." };
+
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/companies");
+  return { ok: true, id: companyId };
 }
