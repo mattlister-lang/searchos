@@ -1,90 +1,44 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { logInterview, recordOffer, setInterviewOutcome } from "@/lib/actions";
+import { INTERVIEW_KINDS, INTERVIEW_OUTCOMES, label } from "@/lib/domain";
+import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormDialog, SelectField, TextField, Field } from "@/components/forms/form-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const KINDS = ["consultant", "phone", "video", "in_person", "panel", "final"] as const;
-const OUTCOMES = ["scheduled", "passed", "failed", "cancelled", "no_show"] as const;
-
 export function LogInterviewDialog(props: { candidacyId: string; candidateName: string }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const f = useActionForm(logInterview, {
     round: "1", kind: "video", scheduledAt: "", location: "", notes: "",
   });
 
-  async function submit() {
-    setPending(true);
-    setError(null);
-    const res = await logInterview({ candidacyId: props.candidacyId, ...form });
-    setPending(false);
-    if (res.ok) { setOpen(false); router.refresh(); }
-    else if ("error" in res) setError(res.error);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Interview</Button>} />
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Interview — {props.candidateName}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Round</Label>
-              <Input type="number" min={1} value={form.round}
-                onChange={(e) => setForm({ ...form, round: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Kind</Label>
-              <Select value={form.kind} onValueChange={(v) => v && setForm({ ...form, kind: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {KINDS.map((k) => (
-                    <SelectItem key={k} value={k} className="capitalize">
-                      {k.replaceAll("_", " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Scheduled for</Label>
-            <Input type="datetime-local" value={form.scheduledAt}
-              onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Location / link</Label>
-            <Input value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Notes</Label>
-            <Textarea rows={3} value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending} onClick={submit}>
-            {pending ? "Saving…" : "Log interview"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      trigger={<Button variant="outline" size="sm">Interview</Button>}
+      title={`Interview — ${props.candidateName}`}
+      open={f.open} onOpenChange={f.onOpenChange}
+      error={f.error} pending={f.pending}
+      submitLabel="Log interview"
+      onSubmit={() => f.submit({ candidacyId: props.candidacyId })}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Round" type="number" value={f.form.round}
+          onChange={f.setField("round")} />
+        <SelectField label="Kind" value={f.form.kind} onChange={f.set("kind")}
+          options={INTERVIEW_KINDS} />
+      </div>
+      <TextField label="Scheduled for" type="datetime-local" value={f.form.scheduledAt}
+        onChange={f.setField("scheduledAt")} />
+      <TextField label="Location / link" value={f.form.location}
+        onChange={f.setField("location")} />
+      <Field label="Notes">
+        <Textarea rows={3} value={f.form.notes} onChange={f.setField("notes")} />
+      </Field>
+    </FormDialog>
   );
 }
 
@@ -98,9 +52,9 @@ export function InterviewOutcomeControl(props: { interviewId: string; outcome: s
     <Select value={props.outcome} onValueChange={(v) => v && change(v)}>
       <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
       <SelectContent>
-        {OUTCOMES.map((o) => (
+        {INTERVIEW_OUTCOMES.map((o) => (
           <SelectItem key={o} value={o} className="capitalize text-xs">
-            {o.replaceAll("_", " ")}
+            {label(o)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -113,66 +67,36 @@ export function OfferDialog(props: {
   candidateName: string;
   mandateTitle: string;
 }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const f = useActionForm(recordOffer, {
     salary: "", feeAmount: "", offerAcceptedAt: "", startDate: "", board: false,
   });
 
-  async function submit() {
-    setPending(true);
-    setError(null);
-    const res = await recordOffer({ candidacyId: props.candidacyId, ...form });
-    setPending(false);
-    if (res.ok) { setOpen(false); router.refresh(); }
-    else if ("error" in res) setError(res.error);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Offer</Button>} />
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Offer — {props.candidateName} · {props.mandateTitle}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Salary (£)</Label>
-              <Input type="number" value={form.salary}
-                onChange={(e) => setForm({ ...form, salary: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Fee (£)</Label>
-              <Input type="number" value={form.feeAmount}
-                onChange={(e) => setForm({ ...form, feeAmount: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Offer accepted</Label>
-              <Input type="date" value={form.offerAcceptedAt}
-                onChange={(e) => setForm({ ...form, offerAcceptedAt: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Start date</Label>
-              <Input type="date" value={form.startDate}
-                onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={form.board}
-              onChange={(e) => setForm({ ...form, board: e.target.checked })} />
-            Board this fee (requires accepted offer + start date)
-          </label>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending} onClick={submit}>
-            {pending ? "Saving…" : form.board ? "Save & board fee" : "Save offer details"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      trigger={<Button variant="outline" size="sm">Offer</Button>}
+      title={`Offer — ${props.candidateName} · ${props.mandateTitle}`}
+      open={f.open} onOpenChange={f.onOpenChange}
+      error={f.error} pending={f.pending}
+      submitLabel={f.form.board ? "Save & board fee" : "Save offer details"}
+      onSubmit={() => f.submit({ candidacyId: props.candidacyId })}
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Salary (£)" type="number" value={f.form.salary}
+          onChange={f.setField("salary")} />
+        <TextField label="Fee (£)" type="number" value={f.form.feeAmount}
+          onChange={f.setField("feeAmount")} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Offer accepted" type="date" value={f.form.offerAcceptedAt}
+          onChange={f.setField("offerAcceptedAt")} />
+        <TextField label="Start date" type="date" value={f.form.startDate}
+          onChange={f.setField("startDate")} />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={f.form.board}
+          onChange={(e) => f.set("board")(e.target.checked)} />
+        Board this fee (requires accepted offer + start date)
+      </label>
+    </FormDialog>
   );
 }

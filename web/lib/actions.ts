@@ -4,7 +4,18 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
+import {
+  ACTIVITY_TYPES,
+  CANDIDACY_STAGES,
+  COMPANY_STATUSES,
+  DEAL_STAGES,
+  INTERVIEW_KINDS,
+  INTERVIEW_OUTCOMES,
+  SECTOR_TAXONOMY,
+  SENIORITY_LEVELS,
+} from "@/lib/domain";
 import {
   isGenericMailbox,
   normaliseLinkedinUrl,
@@ -167,7 +178,7 @@ async function attachEmployment(
 // ---------------------------------------------------------------------------
 
 const ActivityInput = z.object({
-  type: z.enum(["email", "meeting", "call", "note", "linkedin_message", "linkedin_post", "event"]),
+  type: z.enum(ACTIVITY_TYPES),
   occurredAt: optional(z.string()),
   subject: optional(z.string().trim().max(300)),
   body: optional(z.string().trim().max(20000)),
@@ -219,7 +230,7 @@ export async function logActivity(raw: unknown): Promise<ActionResult> {
 const CompanyInput = z.object({
   name: z.string().trim().min(2),
   domain: optional(z.string().trim().toLowerCase()),
-  status: z.enum(["prospect", "client", "target", "source"]).default("target"),
+  status: z.enum(COMPANY_STATUSES).default("target"),
 });
 
 export async function createCompany(raw: unknown): Promise<ActionResult> {
@@ -248,7 +259,7 @@ const DealInput = z.object({
   dealId: optional(z.string().uuid()),
   companyName: optional(z.string().trim()),
   name: optional(z.string().trim().min(2)),
-  stage: optional(z.enum(["lead", "qualified", "proposal", "negotiation", "won", "lost"])),
+  stage: optional(z.enum(DEAL_STAGES)),
   value: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().optional()),
   nextStep: optional(z.string().trim().max(500)),
   notes: optional(z.string().trim().max(5000)),
@@ -261,7 +272,7 @@ export async function upsertDeal(raw: unknown): Promise<ActionResult> {
   const input = parsed.data;
 
   if (input.dealId) {
-    const patch: Record<string, unknown> = {};
+    const patch: Database["public"]["Tables"]["deal"]["Update"] = {};
     if (input.stage) patch.stage = input.stage;
     if (input.nextStep !== undefined) patch.next_step = input.nextStep;
     if (input.value !== undefined) patch.value = input.value;
@@ -345,11 +356,6 @@ export async function createMandate(raw: unknown): Promise<ActionResult> {
 // Pipeline
 // ---------------------------------------------------------------------------
 
-const STAGE_ORDER = [
-  "identified", "approached", "screening", "shortlisted",
-  "client_interview", "offer", "placed", "rejected", "withdrawn",
-] as const;
-
 const CandidacyInput = z.object({
   personId: z.string().uuid(),
   mandateId: z.string().uuid(),
@@ -381,7 +387,7 @@ export async function addCandidacy(raw: unknown): Promise<ActionResult> {
 
 const MoveStageInput = z.object({
   candidacyId: z.string().uuid(),
-  stage: z.enum(STAGE_ORDER),
+  stage: z.enum(CANDIDACY_STAGES),
   confirmed: z.boolean().default(false),
 });
 
@@ -398,10 +404,10 @@ export async function moveStage(raw: unknown): Promise<ActionResult> {
     .maybeSingle();
   if (!current) return { ok: false, error: "Candidacy not found." };
 
-  const from = STAGE_ORDER.indexOf(current.stage as (typeof STAGE_ORDER)[number]);
-  const to = STAGE_ORDER.indexOf(stage);
+  const from = CANDIDACY_STAGES.indexOf(current.stage as (typeof CANDIDACY_STAGES)[number]);
+  const to = CANDIDACY_STAGES.indexOf(stage);
   const isRegression = to < from && !["rejected", "withdrawn"].includes(stage);
-  const name = (current.person as unknown as { full_name: string } | null)?.full_name ?? "this candidate";
+  const name = current.person?.full_name ?? "this candidate";
 
   // Confirm-before-consequence (ADR-013): regressions and placement.
   if (isRegression && !confirmed) {
@@ -464,6 +470,7 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   }
   if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
   if (!["cv", "spec", "terms", "other"].includes(kind)) return { ok: false, error: "Invalid kind." };
+  const docKind = kind as Database["public"]["Enums"]["document_kind"];
 
   const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
   const path = `person/${personId}/${Date.now()}-${safeName}`;
@@ -477,7 +484,7 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   const { data, error } = await db
     .from("document")
     .insert({
-      kind,
+      kind: docKind,
       filename: file.name,
       storage_path: path,
       mime_type: file.type || null,
@@ -495,9 +502,6 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
 // Phase B: interviews, offer→boarded→invoiced→paid, taxonomy (0006)
 // ---------------------------------------------------------------------------
 
-export const SENIORITY_LEVELS = ["junior", "mid", "senior", "manager", "head", "director", "vp", "c_suite"] as const;
-export const SECTOR_TAXONOMY = ["hydrogen", "zev", "solar", "battery", "grid", "flexibility", "other"] as const;
-
 const csvToArray = z.preprocess(
   (v) => (typeof v === "string" ? v.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : v ?? []),
   z.array(z.string().max(60)).max(30),
@@ -506,7 +510,7 @@ const csvToArray = z.preprocess(
 const InterviewInput = z.object({
   candidacyId: z.string().uuid(),
   round: z.coerce.number().int().min(1).max(20).default(1),
-  kind: z.enum(["consultant", "phone", "video", "in_person", "panel", "final"]),
+  kind: z.enum(INTERVIEW_KINDS),
   scheduledAt: optional(z.string()),
   location: optional(z.string().trim().max(300)),
   notes: optional(z.string().trim().max(5000)),
@@ -536,7 +540,7 @@ export async function logInterview(raw: unknown): Promise<ActionResult> {
 
 const OutcomeInput = z.object({
   interviewId: z.string().uuid(),
-  outcome: z.enum(["scheduled", "passed", "failed", "cancelled", "no_show"]),
+  outcome: z.enum(INTERVIEW_OUTCOMES),
   feedback: optional(z.string().trim().max(10000)),
 });
 
@@ -577,7 +581,7 @@ export async function recordOffer(raw: unknown): Promise<ActionResult> {
     return { ok: false, error: "Boarding needs a fee amount." };
   }
 
-  const patch: Record<string, unknown> = {};
+  const patch: Database["public"]["Tables"]["candidacy"]["Update"] = {};
   if (o.salary !== undefined) patch.salary = o.salary;
   if (o.feeAmount !== undefined) patch.fee_amount = o.feeAmount;
   if (o.offerAcceptedAt) patch.offer_accepted_at = new Date(o.offerAcceptedAt).toISOString();

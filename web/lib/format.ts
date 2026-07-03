@@ -20,16 +20,3 @@ export function fmtMoney(value: number | string | null | undefined): string {
     maximumFractionDigits: 0,
   }).format(Number(value));
 }
-
-export const STAGE_ORDER = [
-  "identified",
-  "approached",
-  "screening",
-  "shortlisted",
-  "client_interview",
-  "offer",
-] as const;
-
-export function stageLabel(stage: string): string {
-  return stage.replaceAll("_", " ");
-}

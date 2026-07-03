@@ -8,7 +8,8 @@ import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { UploadCv } from "@/components/forms/upload-cv";
 import { db } from "@/lib/db";
-import { fmtDate, stageLabel } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
+import { label } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -166,7 +167,7 @@ export default async function PersonPage({
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
-                  <Badge className="capitalize">{stageLabel(c.stage)}</Badge>
+                  <Badge className="capitalize">{label(c.stage)}</Badge>
                   <span className="text-xs text-muted-foreground">
                     {fmtDate(c.stage_changed_at)}
                   </span>

@@ -84,8 +84,8 @@ export default async function Billings() {
               </TableHeader>
               <TableBody>
                 {placements.data.map((p) => {
-                  const person = p.person as unknown as { full_name: string } | null;
-                  const mandate = p.mandate as unknown as { title: string; company: { name: string } | null } | null;
+                  const person = p.person;
+                  const mandate = p.mandate;
                   const label = `${person?.full_name ?? "[erased]"} · ${mandate?.title ?? ""}`;
                   return (
                     <TableRow key={p.id}>
@@ -133,10 +133,7 @@ export default async function Billings() {
               </TableHeader>
               <TableBody>
                 {invoices.data.map((i) => {
-                  const c = i.candidacy as unknown as {
-                    person: { full_name: string } | null;
-                    mandate: { title: string } | null;
-                  } | null;
+                  const c = i.candidacy;
                   return (
                     <TableRow key={i.id}>
                       <TableCell className="font-medium">

@@ -15,19 +15,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type PersonRow = {
-  id: string;
-  full_name: string;
-  location: string | null;
-  erased_at: string | null;
-  person_email: { email: string; is_primary: boolean }[];
-  employment: {
-    title: string | null;
-    is_current: boolean;
-    company: { name: string } | null;
-  }[];
-};
-
 export default async function People({
   searchParams,
 }: {
@@ -44,7 +31,7 @@ export default async function People({
     .limit(200);
   if (q) query = query.ilike("full_name", `%${q}%`);
   const { data } = await query;
-  const people = (data ?? []) as unknown as PersonRow[];
+  const people = data ?? [];
 
   return (
     <div className="flex flex-col gap-6">

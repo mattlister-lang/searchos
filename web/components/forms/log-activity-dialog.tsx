@@ -1,20 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { logActivity } from "@/lib/actions";
+import { ACTIVITY_TYPES } from "@/lib/domain";
+import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { FormDialog, Field, SelectField, TextField } from "@/components/forms/form-dialog";
 import { Textarea } from "@/components/ui/textarea";
-
-const TYPES = ["call", "meeting", "email", "note", "linkedin_message", "linkedin_post", "event"] as const;
 
 export function LogActivityDialog(props: {
   personId?: string;
@@ -23,72 +14,30 @@ export function LogActivityDialog(props: {
   mandateId?: string;
   contextLabel: string;
 }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [type, setType] = useState<string>("call");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-
-  async function submit() {
-    setPending(true);
-    setError(null);
-    const res = await logActivity({
-      type,
-      subject,
-      body,
-      personIds: props.personId ? [props.personId] : [],
-      companyId: props.companyId,
-      dealId: props.dealId,
-      mandateId: props.mandateId,
-    });
-    setPending(false);
-    if (res.ok) {
-      setOpen(false);
-      setSubject("");
-      setBody("");
-      router.refresh();
-    } else if ("error" in res) {
-      setError(res.error);
-    }
-  }
+  const f = useActionForm(logActivity, { type: "call", subject: "", body: "" });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Log activity</Button>} />
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Log activity — {props.contextLabel}</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5">
-            <Label>Type</Label>
-            <Select value={type} onValueChange={(v) => v && setType(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {TYPES.map((t) => (
-                  <SelectItem key={t} value={t} className="capitalize">
-                    {t.replaceAll("_", " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="subject">Subject</Label>
-            <Input id="subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="body">Notes</Label>
-            <Textarea id="body" rows={5} value={body} onChange={(e) => setBody(e.target.value)} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending} onClick={submit}>
-            {pending ? "Saving…" : "Log it"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      trigger={<Button variant="outline" size="sm">Log activity</Button>}
+      title={`Log activity — ${props.contextLabel}`}
+      open={f.open} onOpenChange={f.onOpenChange}
+      error={f.error} pending={f.pending}
+      submitLabel="Log it"
+      onSubmit={() =>
+        f.submit({
+          personIds: props.personId ? [props.personId] : [],
+          companyId: props.companyId,
+          dealId: props.dealId,
+          mandateId: props.mandateId,
+        })
+      }
+    >
+      <SelectField label="Type" value={f.form.type} onChange={f.set("type")}
+        options={ACTIVITY_TYPES} />
+      <TextField label="Subject" value={f.form.subject} onChange={f.setField("subject")} />
+      <Field label="Notes">
+        <Textarea rows={5} value={f.form.body} onChange={f.setField("body")} />
+      </Field>
+    </FormDialog>
   );
 }

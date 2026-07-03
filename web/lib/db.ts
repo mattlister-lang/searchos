@@ -1,29 +1,31 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/database.types";
 
 /**
- * Service-role client — the UI's only data path (ADR-021). Server-only by
- * construction: importing this from a client component fails the build.
- * RLS stays no-policies; the service role bypasses it, the browser never
- * holds a credential that can read anything.
+ * Service-role client — the UI's only data path (ADR-022), typed against the
+ * generated schema (engineering.md §2: regenerate database.types.ts in the
+ * same PR as any migration). Server-only by construction. RLS stays
+ * no-policies; the browser never holds a data credential.
  *
- * Constructed lazily so `next build` never needs credentials — the key
- * exists only in Vercel's server environment at request time.
+ * Constructed lazily so `next build` never needs credentials.
  */
-let client: SupabaseClient | undefined;
+export type Db = SupabaseClient<Database>;
 
-function make(): SupabaseClient {
-  return createClient(
+let client: Db | undefined;
+
+function make(): Db {
+  return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 }
 
-export const db = new Proxy({} as SupabaseClient, {
+export const db = new Proxy({} as Db, {
   get(_target, prop) {
     client ??= make();
     const value = (client as unknown as Record<PropertyKey, unknown>)[prop as string];
-    return typeof value === "function" ? (value as Function).bind(client) : value;
+    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(client) : value;
   },
 });
