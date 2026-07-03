@@ -1,4 +1,6 @@
 import "server-only";
+import { redirect } from "next/navigation";
+import { createAuthClient } from "@/lib/supabase/server";
 
 export function isAllowedEmail(email: string | undefined | null): boolean {
   if (!email) return false;
@@ -7,4 +9,14 @@ export function isAllowedEmail(email: string | undefined | null): boolean {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   return allowed.includes(email.toLowerCase());
+}
+
+/** Defence in depth behind the middleware: every page re-checks the gate. */
+export async function requireUser() {
+  const supabase = await createAuthClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || !isAllowedEmail(user.email)) redirect("/login");
+  return user;
 }

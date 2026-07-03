@@ -10,7 +10,7 @@ export async function createAuthClient() {
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: (all) => {
+        setAll: (all: { name: string; value: string; options?: object }[]) => {
           try {
             all.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options),
