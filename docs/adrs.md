@@ -250,3 +250,18 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 5. The server-action layer is the same domain logic the Phase 1 MCP server will expose — written once, shared later.
 
 **Consequences.** "Zero manual data entry" is retired as dogma and survives as economics: ingestion (Phase D) remains the goal for what *can* auto-log; the UI makes what can't auto-log take seconds. `docs/mcp-tools.md` remains the contract vocabulary. CV/document upload lands in Supabase Storage (private bucket) with rows in `document`.
+
+---
+
+## ADR-023: The engineering contract and the learning discipline
+
+**Context.** First real use (3 Jul 2026) exposed the cost of speed without structure: duplicated constants, eight hand-rolled sibling dialogs, untyped data access, tests outside the repo, no CI, entities without pages, nothing cross-linked. Matt's standard: a future-proofed, billion-dollar-SaaS-grade codebase a new developer or Claude session picks up cold — and an organisation that learns by contract, permanently.
+
+**Decision.**
+1. **`docs/engineering.md` is binding** exactly as ADRs are: the layer map, sources-of-truth rules, the shared form system, the no-third-copy rule, the information-architecture rules, the write-path contract, and the Definition of Done for every PR.
+2. **`docs/learnings.md` is the append-only learning register.** Every mistake, surprise, reversal, or non-obvious decision is recorded — same day, same PR where possible — as: what happened → root cause → lesson → *where the rule now lives*. A learning that changes nothing written down is not learned. Repeating a recorded mistake is the one unforgivable defect. NO EXCEPTIONS.
+3. **Decisions continue as numbered ADRs**, append-only. Learnings capture how we work; ADRs capture what we chose.
+4. **Enforcement is mechanical wherever possible**: the behaviour test suite lives in `supabase/tests/` and runs in CI on every PR alongside typecheck and build; the PR template carries the DoD checklist including "learnings recorded"; CLAUDE.md directs every session to read the contract and the register before non-trivial work; the weekly hygiene review asks "any unrecorded learnings?".
+5. **Plan before build** for anything non-trivial: layers touched, components reused, tests extended — written down before code. Velocity is not progress.
+
+**Consequences.** Slightly slower feature starts; drastically cheaper feature N+1. The register is seeded with fourteen real entries from day one — the wisdom starts true, not aspirational.
