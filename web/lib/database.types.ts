@@ -612,6 +612,7 @@ export type Database = {
           kind: Database["public"]["Enums"]["document_kind"]
           mandate_id: string | null
           mime_type: string | null
+          parsed_cv: Json | null
           parsed_text: string | null
           person_id: string | null
           storage_path: string
@@ -627,6 +628,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["document_kind"]
           mandate_id?: string | null
           mime_type?: string | null
+          parsed_cv?: Json | null
           parsed_text?: string | null
           person_id?: string | null
           storage_path: string
@@ -642,6 +644,7 @@ export type Database = {
           kind?: Database["public"]["Enums"]["document_kind"]
           mandate_id?: string | null
           mime_type?: string | null
+          parsed_cv?: Json | null
           parsed_text?: string | null
           person_id?: string | null
           storage_path?: string
@@ -1570,13 +1573,19 @@ export type Database = {
       }
     }
     Functions: {
+      ai_spend_this_month_gbp: { Args: never; Returns: number }
       erase_person: { Args: { p_person: string }; Returns: undefined }
       merge_people: {
         Args: { p_keep: string; p_remove: string }
         Returns: undefined
       }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
+      search_people_boolean: {
+        Args: { q: string }
+        Returns: {
+          person_id: string
+          rank: number
+        }[]
+      }
       similar_people: {
         Args: { p_company?: string; p_name: string }
         Returns: {
@@ -1607,26 +1616,12 @@ export type Database = {
         | "withdrawn"
       company_status: "prospect" | "client" | "target" | "source"
       deal_stage:
-        | "lead"
-        | "qualified"
-        | "proposal"
-        | "negotiation"
-        | "won"
-        | "lost"
+        "lead" | "qualified" | "proposal" | "negotiation" | "won" | "lost"
       document_kind: "cv" | "spec" | "terms" | "other"
       interview_kind:
-        | "consultant"
-        | "phone"
-        | "video"
-        | "in_person"
-        | "panel"
-        | "final"
+        "consultant" | "phone" | "video" | "in_person" | "panel" | "final"
       interview_outcome:
-        | "scheduled"
-        | "passed"
-        | "failed"
-        | "cancelled"
-        | "no_show"
+        "scheduled" | "passed" | "failed" | "cancelled" | "no_show"
       invoice_status: "draft" | "issued" | "paid" | "void"
       mandate_status: "open" | "on_hold" | "completed" | "cancelled"
       queue_status: "pending" | "approved" | "ignored" | "rejected"
@@ -1645,12 +1640,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1672,13 +1667,12 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1697,13 +1691,12 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema["Tables"] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1722,13 +1715,12 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    keyof DefaultSchema["Enums"] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1741,11 +1733,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

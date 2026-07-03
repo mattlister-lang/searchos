@@ -161,3 +161,74 @@ correctly — as the Q3 sector filters do) or filter in TS. Here the guard was a
 pure ≤200-row optimisation, so fetch-and-dedupe in TS is both correct and
 simpler. → `suggestTags` flattens/dedupes/prefix-filters in TS (lib/actions.ts);
 this register.
+
+**L-019 · 2026-07-03 · Boolean people search built on-the-fly, not materialised.**
+R3/I3 wanted full-text people search over name + skills/functions/sectors + CV
+`parsed_text`. The tempting "proper" answer is a stored `person.search_tsv`
+tsvector with a GIN index — but the CV text lives in a *child* table
+(`document`), so keeping that column fresh needs triggers on both `person` and
+`document` (including document reassignment), i.e. real denormalisation and a
+staleness surface, for a pool of hundreds (ADR-018 says a scan wins at this
+scale). → Reached for the scalable pattern before the scale existed; ADR-002
+says boring first. → `search_people_boolean(q)` builds the weighted vector in a
+CTE per query — no column, no triggers, no staleness; materialise + GIN only if
+the pool outgrows a scan, and the RPC signature stays identical so no caller
+changes. → Migration 0008 header + function comment; behaviour test 13.
+
+**L-020 · 2026-07-03 · A new jsonb column can smuggle identifying data past erasure — check the audit path.**
+I1 adds `document.parsed_cv` holding a person's standardised CV (name, emails,
+history). The `document` audit trigger (0005) captures whole rows, so parsed_cv
+lands in `audit_log` — exactly the "audit vs erasure" collision L-010 burned us
+on. → New columns on audited tables inherit the audit/erasure interaction and
+must be re-verified, not assumed. → Confirmed no `erase_person` change is
+needed: document audit rows carry `person_id`, which the existing purge already
+matches (`old_row/new_row ->> 'person_id'`), so parsed_cv is purged with the
+person on both paths. → Behaviour test 14 proves it end-to-end (insert CV →
+erase → zero audit references); engineering.md §6 (tests earn their keep).
+
+**L-021 · 2026-07-03 · `erase_person` was latently broken on prod: pinned search paths vs the `extensions` schema.**
+While replicating prod's extension layout locally (pgcrypto pre-installed by
+Supabase in the `extensions` schema; citext/pg_trgm/vector created by 0001 into
+public), the behaviour suite failed inside `erase_person`: `digest()` — the
+pgcrypto function that hashes emails into `suppression_list` — resolves nowhere
+under 0003's pinned `search_path = public, pg_temp`. The GDPR-critical erasure
+path would have thrown on its first real use on prod. → Two compounding causes:
+(1) 0003 pinned search paths to satisfy the mutable-search-path advisor without
+asking what schemas the function bodies actually resolve from on *prod*;
+(2) CI's plain pgvector image installs pgcrypto into public, so the suite could
+never see the difference — a test environment that is shaped differently from
+prod silently certifies broken code. → Fix in 0009: repin every function to
+`public, extensions, pg_temp` (Postgres skips nonexistent schemas, so this is
+safe where extensions live in public and correct on prod). → Enforcement: CI
+now creates the `extensions` schema and installs pgcrypto there before applying
+migrations (ci.yml "Mirror prod extension layout" step), so any function that
+forgets `extensions` in its pin fails in CI exactly as it would on prod; this
+register.
+
+**L-022 · 2026-07-03 · The AI-call log and its subject artifact can't be created in the same moment.**
+ADR-024 wants every `ai_usage_log` row to carry `source_ref` = the document id,
+but I1's whole design is that the CV parse happens BEFORE anything exists — the
+JSON pre-fills a dialog and the operator may never confirm, so at call time
+there is no document (and creating one pre-confirm would strand personal data
+outside the erasure machinery, since `erase_person` purges documents by
+`person_id`). → Two contract clauses ("source_ref = document id" and "nothing
+is created before confirm") collide on ordering. → Log at call time with
+`source_ref` null — nothing unlogged, ever — and backfill the reference when
+the artifact is born (`linkAiLogToDocument`, guarded by `.is("source_ref",
+null)`); never defer the log itself, and never create orphan records to have
+an id to log. → `lib/ai.ts` (extractCv logs on every path incl. thrown API
+errors) + `createPersonFromCv` backfill; this register.
+
+**L-023 · 2026-07-03 · A `File` can't ride a plain-object server-action payload — wrap at the action boundary, not by forking the dialog.**
+CV-first Add Person needs the browser-held `File` sent with the confirm
+submit, but `useActionForm` passes a plain object and React's server-action
+serialization only reliably carries files inside `FormData`. The tempting fix
+was a second, hand-rolled submit path in the dialog — exactly the L-003
+defect. → The form machine's contract is `(input: unknown) => Promise<
+ActionResult>`; a FormData-building wrapper satisfies it. → Keep ONE
+useActionForm and give it a closure action that switches transport: plain
+object → `createPerson`, CV attached → wrap fields as JSON + file into
+FormData → `createPersonFromCv`. Dialogs never grow a second state machine
+because the payload shape changed. → add-person-dialog.tsx `submitAction`;
+engineering.md §3 stands unamended (the machine already allowed this); this
+register.

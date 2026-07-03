@@ -25,19 +25,38 @@ export default async function People({
   const seniority = asMember(SENIORITY_LEVELS, rawSeniority);
   const sector = asMember(SECTOR_TAXONOMY, rawSector);
 
-  let query = db
-    .from("person")
-    .select(
-      "id, full_name, location, erased_at, person_email(email, is_primary), employment(title, is_current, company(name))",
-    )
-    .is("erased_at", null)
-    .order("full_name")
-    .limit(200);
-  if (q) query = query.ilike("full_name", `%${q}%`);
-  if (seniority) query = query.eq("seniority", seniority);
-  if (sector) query = query.contains("sectors", [sector]);
-  const { data } = await query;
-  const people = data ?? [];
+  // Boolean search (I3): q runs through search_people_boolean — websearch
+  // syntax (quoted phrases, OR, -negation) over name, skills/functions/
+  // sectors and CV text, ranked in SQL. The client call stays dumb (L-018):
+  // ranked ids in, `.in()` fetch out, rank order restored in TS. Erased
+  // people never come back from the RPC.
+  let rankedIds: string[] | null = null;
+  if (q) {
+    const { data: hits } = await db.rpc("search_people_boolean", { q });
+    rankedIds = (hits ?? []).map((h) => h.person_id).slice(0, 200);
+  }
+
+  async function fetchPeople(ids: string[] | null) {
+    let query = db
+      .from("person")
+      .select(
+        "id, full_name, location, erased_at, person_email(email, is_primary), employment(title, is_current, company(name))",
+      )
+      .is("erased_at", null)
+      .limit(200);
+    query = ids ? query.in("id", ids) : query.order("full_name");
+    if (seniority) query = query.eq("seniority", seniority);
+    if (sector) query = query.contains("sectors", [sector]);
+    const { data } = await query;
+    const rows = data ?? [];
+    if (ids) {
+      const rank = new Map(ids.map((id, i) => [id, i]));
+      rows.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    }
+    return rows;
+  }
+  // A boolean query with zero hits never touches the table.
+  const people = rankedIds && rankedIds.length === 0 ? [] : await fetchPeople(rankedIds);
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,7 +67,7 @@ export default async function People({
             {/* preserve active filters when the name search submits (GET) */}
             {seniority && <input type="hidden" name="seniority" value={seniority} />}
             {sector && <input type="hidden" name="sector" value={sector} />}
-            <Input name="q" placeholder="Search names…" defaultValue={q ?? ""} />
+            <Input name="q" placeholder={'Search — "phrase", OR, -exclude…'} defaultValue={q ?? ""} />
           </form>
           <AddPersonDialog />
         </div>

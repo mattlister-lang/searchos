@@ -490,5 +490,181 @@ begin
   raise notice 'TEST 11 OK: interviews, money flow, sales board, taxonomy, deal link';
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- 0008 fixtures — dedicated rows so these tests don't lean on state mutated
+-- by the merge/erasure tests above. Hex-only UUIDs (L-012).
+-- b1 has both hydrogen + electrolysis; b4 has hydrogen but NOT electrolysis
+-- (for the -negation case). b2 carries a CV with searchable body text. b3 is
+-- erased and must never surface.
+-- ---------------------------------------------------------------------------
+insert into person (id, full_name, skills, functions, sectors) values
+  ('00000000-0000-0000-0000-0000000000b1', 'Nadia Quantum', '{hydrogen,electrolysis}', '{engineering}', '{hydrogen}'),
+  ('00000000-0000-0000-0000-0000000000b2', 'Owen Battery',  '{battery}',               '{commercial}',  '{battery}'),
+  ('00000000-0000-0000-0000-0000000000b4', 'Priya Grid',    '{hydrogen,grid}',         '{commercial}',  '{grid}');
+insert into person (id, full_name, skills, erased_at) values
+  ('00000000-0000-0000-0000-0000000000b3', 'Ghost Hydrogen', '{hydrogen}', now());
+
+insert into document (id, person_id, kind, storage_path, parsed_text, parsed_cv) values
+  ('00000000-0000-0000-0000-0000000000b5', '00000000-0000-0000-0000-0000000000b2', 'cv',
+   'person/b2/cv.pdf',
+   'solar photovoltaic origination specialist with grid experience',
+   '{"full_name":"Owen Battery","emails":["owen@example.com"],"seniority":"director",'
+   '"skills":["battery","solar"],"sectors":["battery","solar"],'
+   '"employment_history":[{"company":"SunCo","title":"Head of Origination","is_current":true}],'
+   '"summary":"Energy origination lead."}'::jsonb);
+
+-- ---------------------------------------------------------------------------
+-- Test 12 (I1): document.parsed_cv round-trips structured JSON and defaults
+-- null for a document that carries no extraction.
+-- ---------------------------------------------------------------------------
+do $$
+declare v jsonb;
+begin
+  select parsed_cv into v from document where id = '00000000-0000-0000-0000-0000000000b5';
+  if v is null then
+    raise exception 'TEST 12 FAILED: parsed_cv not stored';
+  end if;
+  if v ->> 'full_name' <> 'Owen Battery' then
+    raise exception 'TEST 12 FAILED: parsed_cv full_name did not round-trip';
+  end if;
+  if jsonb_array_length(v -> 'employment_history') <> 1 then
+    raise exception 'TEST 12 FAILED: parsed_cv employment_history lost';
+  end if;
+
+  insert into document (id, person_id, kind, storage_path)
+  values ('00000000-0000-0000-0000-0000000000b6',
+          '00000000-0000-0000-0000-0000000000b1', 'spec', 'person/b1/spec.pdf');
+  if (select parsed_cv from document where id = '00000000-0000-0000-0000-0000000000b6') is not null then
+    raise exception 'TEST 12 FAILED: parsed_cv should default null';
+  end if;
+  raise notice 'TEST 12 OK: document.parsed_cv stores structured CV JSON, defaults null';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 13 (I3): search_people_boolean — person fields + CV text, websearch
+-- operators, erased exclusion, empty-query safety.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  -- plain term over person taxonomy; erased person never returned
+  if not exists (select 1 from search_people_boolean('hydrogen')
+                 where person_id = '00000000-0000-0000-0000-0000000000b1') then
+    raise exception 'TEST 13 FAILED: term did not match person skills';
+  end if;
+  if not exists (select 1 from search_people_boolean('hydrogen')
+                 where person_id = '00000000-0000-0000-0000-0000000000b4') then
+    raise exception 'TEST 13 FAILED: term missed second hydrogen person';
+  end if;
+  if exists (select 1 from search_people_boolean('hydrogen')
+             where person_id = '00000000-0000-0000-0000-0000000000b3') then
+    raise exception 'TEST 13 FAILED: erased person returned';
+  end if;
+
+  -- CV parsed_text is searchable
+  if not exists (select 1 from search_people_boolean('photovoltaic')
+                 where person_id = '00000000-0000-0000-0000-0000000000b2') then
+    raise exception 'TEST 13 FAILED: CV parsed_text not searched';
+  end if;
+
+  -- OR operator spans both people
+  if not exists (select 1 from search_people_boolean('battery OR hydrogen')
+                 where person_id = '00000000-0000-0000-0000-0000000000b1')
+     or not exists (select 1 from search_people_boolean('battery OR hydrogen')
+                    where person_id = '00000000-0000-0000-0000-0000000000b2') then
+    raise exception 'TEST 13 FAILED: OR operator did not span matches';
+  end if;
+
+  -- -negation removes the electrolysis person, keeps the other hydrogen one
+  if exists (select 1 from search_people_boolean('hydrogen -electrolysis')
+             where person_id = '00000000-0000-0000-0000-0000000000b1') then
+    raise exception 'TEST 13 FAILED: -negation did not exclude electrolysis person';
+  end if;
+  if not exists (select 1 from search_people_boolean('hydrogen -electrolysis')
+                 where person_id = '00000000-0000-0000-0000-0000000000b4') then
+    raise exception 'TEST 13 FAILED: -negation over-excluded';
+  end if;
+
+  -- quoted phrase requires adjacency; reversed order must not match
+  if not exists (select 1 from search_people_boolean('"photovoltaic origination"')
+                 where person_id = '00000000-0000-0000-0000-0000000000b2') then
+    raise exception 'TEST 13 FAILED: quoted phrase did not match';
+  end if;
+  if exists (select 1 from search_people_boolean('"origination photovoltaic"')
+             where person_id = '00000000-0000-0000-0000-0000000000b2') then
+    raise exception 'TEST 13 FAILED: reversed phrase should not match';
+  end if;
+
+  -- empty query never dumps the table
+  if exists (select 1 from search_people_boolean('')) then
+    raise exception 'TEST 13 FAILED: empty query returned rows';
+  end if;
+
+  raise notice 'TEST 13 OK: boolean people search — fields + CV text, operators, erased excluded';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 14 (I1 + GDPR): parsed_cv reaches audit_log via the document trigger;
+-- erasing the person must purge every audit reference to it, so identifying
+-- CV data cannot linger in the audit trail (ADR-008/020; the L-010 trap).
+-- ---------------------------------------------------------------------------
+insert into person (id, full_name) values
+  ('00000000-0000-0000-0000-0000000000b7', 'Cv Eraseme');
+insert into document (id, person_id, kind, storage_path, parsed_cv) values
+  ('00000000-0000-0000-0000-0000000000b8', '00000000-0000-0000-0000-0000000000b7', 'cv',
+   'person/b7/cv.pdf',
+   '{"full_name":"Cv Eraseme","emails":["cv@erase.example"],"summary":"identifying detail"}'::jsonb);
+
+do $$
+begin
+  if not exists (select 1 from audit_log
+                 where table_name = 'document'
+                   and new_row ->> 'person_id' = '00000000-0000-0000-0000-0000000000b7'
+                   and new_row -> 'parsed_cv' is not null) then
+    raise exception 'TEST 14 SETUP FAILED: document audit did not capture parsed_cv';
+  end if;
+end $$;
+
+select erase_person('00000000-0000-0000-0000-0000000000b7');
+
+do $$
+declare n int;
+begin
+  if exists (select 1 from person where id = '00000000-0000-0000-0000-0000000000b7') then
+    raise exception 'TEST 14 FAILED: never-placed person not hard deleted';
+  end if;
+  select count(*) into n from audit_log
+  where row_id = '00000000-0000-0000-0000-0000000000b7'
+     or old_row ->> 'person_id' = '00000000-0000-0000-0000-0000000000b7'
+     or new_row ->> 'person_id' = '00000000-0000-0000-0000-0000000000b7';
+  if n <> 0 then
+    raise exception 'TEST 14 FAILED: % audit rows still hold erased CV data', n;
+  end if;
+  raise notice 'TEST 14 OK: parsed_cv audit references purged on erasure';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 15 (I1): ai_spend_this_month_gbp sums the current calendar month only.
+-- ---------------------------------------------------------------------------
+do $$
+declare v numeric;
+begin
+  select ai_spend_this_month_gbp() into v;
+  if v <> 0 then
+    raise exception 'TEST 15 FAILED: baseline month spend should be 0, got %', v;
+  end if;
+
+  insert into ai_usage_log (provider, model, purpose, cost_gbp)
+  values ('anthropic', 'claude-haiku-4-5-20251001', 'cv_parse', 0.0123);
+  -- a prior-month charge must be excluded
+  insert into ai_usage_log (provider, model, purpose, cost_gbp, occurred_at)
+  values ('anthropic', 'claude-haiku-4-5-20251001', 'cv_parse', 99, now() - interval '2 months');
+
+  select ai_spend_this_month_gbp() into v;
+  if v <> 0.0123 then
+    raise exception 'TEST 15 FAILED: expected 0.0123 this month, got %', v;
+  end if;
+  raise notice 'TEST 15 OK: ai_spend_this_month_gbp sums current month only';
+end $$;
+
 rollback;
 \echo ALL BEHAVIOUR TESTS PASSED

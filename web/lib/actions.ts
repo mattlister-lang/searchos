@@ -6,18 +6,23 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
+import { extractCv, linkAiLogToDocument } from "@/lib/ai";
+import { ParsedCvSchema, type ParsedCv } from "@/lib/cv";
 import {
   ACTIVITY_TYPES,
   CANDIDACY_STAGES,
+  clampTags,
   COMPANY_STATUSES,
   DEAL_STAGES,
   INTERVIEW_KINDS,
   INTERVIEW_OUTCOMES,
   label,
   MANDATE_STATUSES,
+  partitionSectors,
   SECTOR_TAXONOMY,
   SENIORITY_LEVELS,
 } from "@/lib/domain";
+import { extractText } from "@/lib/extract-text";
 import {
   isGenericMailbox,
   normaliseLinkedinUrl,
@@ -436,30 +441,40 @@ export async function moveStage(raw: unknown): Promise<ActionResult> {
 // Documents (CV upload → private Storage bucket + document row)
 // ---------------------------------------------------------------------------
 
-/** Text extraction at upload (CV parsing) — feeds keyword/trigram matching
- *  and, later, the Phase C matching engine. Pure JS, no AI spend. */
-async function extractText(file: File): Promise<string | null> {
-  try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const name = file.name.toLowerCase();
-    if (file.type === "application/pdf" || name.endsWith(".pdf")) {
-      const { extractText: pdfText, getDocumentProxy } = await import("unpdf");
-      const doc = await getDocumentProxy(new Uint8Array(buffer));
-      const { text } = await pdfText(doc, { mergePages: true });
-      return text?.trim() || null;
-    }
-    if (name.endsWith(".docx")) {
-      const mammoth = await import("mammoth");
-      const { value } = await mammoth.extractRawText({ buffer });
-      return value?.trim() || null;
-    }
-    if (file.type.startsWith("text/") || name.endsWith(".txt") || name.endsWith(".md")) {
-      return buffer.toString("utf8").trim() || null;
-    }
-    return null; // unknown format: file is stored, text extraction skipped
-  } catch {
-    return null; // parse failure never blocks the upload
-  }
+/** The one storage-upload + document-row path, shared by uploadDocument and
+ *  the CV-first flow (never a second copy). Extracts text at upload
+ *  (document.parsed_text) and persists the standardised-CV JSON when the
+ *  caller has one (document.parsed_cv, 0008). */
+async function persistDocument(
+  file: File,
+  personId: string,
+  kind: Database["public"]["Enums"]["document_kind"],
+  parsedCv: ParsedCv | null,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
+  const path = `person/${personId}/${Date.now()}-${safeName}`;
+  const { error: upErr } = await db.storage
+    .from("documents")
+    .upload(path, file, { contentType: file.type || "application/octet-stream" });
+  if (upErr) return { ok: false, error: "Upload failed." };
+
+  const parsedText = await extractText(file);
+
+  const { data, error } = await db
+    .from("document")
+    .insert({
+      kind,
+      filename: file.name,
+      storage_path: path,
+      mime_type: file.type || null,
+      parsed_text: parsedText,
+      parsed_cv: parsedCv,
+      person_id: personId,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Metadata insert failed." };
+  return { ok: true, id: data.id };
 }
 
 export async function uploadDocument(formData: FormData): Promise<ActionResult> {
@@ -475,30 +490,105 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   if (!["cv", "spec", "terms", "other"].includes(kind)) return { ok: false, error: "Invalid kind." };
   const docKind = kind as Database["public"]["Enums"]["document_kind"];
 
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
-  const path = `person/${personId}/${Date.now()}-${safeName}`;
-  const { error: upErr } = await db.storage
-    .from("documents")
-    .upload(path, file, { contentType: file.type || "application/octet-stream" });
-  if (upErr) return { ok: false, error: "Upload failed." };
-
-  const parsedText = await extractText(file);
-
-  const { data, error } = await db
-    .from("document")
-    .insert({
-      kind: docKind,
-      filename: file.name,
-      storage_path: path,
-      mime_type: file.type || null,
-      parsed_text: parsedText,
-      person_id: personId,
-    })
-    .select("id")
-    .single();
-  if (error || !data) return { ok: false, error: "Metadata insert failed." };
+  const stored = await persistDocument(file, personId, docKind, null);
+  if (!stored.ok) return stored;
   revalidatePath(`/people/${personId}`);
-  return { ok: true, id: data.id };
+  return { ok: true, id: stored.id };
+}
+
+// ---------------------------------------------------------------------------
+// I1 — CV-first candidate creation (ADR-024). Two steps, human in the middle:
+// parseCv extracts structured JSON to PRE-FILL the Add Person dialog (nothing
+// is created); createPersonFromCv runs on the operator's confirm — the
+// unchanged createPerson resolution path first (golden rule 2), then the CV
+// is stored via the shared document path and the profile enriched.
+// ---------------------------------------------------------------------------
+
+export type CvParseResult =
+  | { ok: true; parsed: ParsedCv; aiLogId: string | null; warning?: string }
+  | { ok: false; error: string };
+
+export async function parseCv(formData: FormData): Promise<CvParseResult> {
+  await requireUser();
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { ok: false, error: "No file." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
+
+  const text = await extractText(file);
+  if (!text) {
+    return {
+      ok: false,
+      error: "Could not extract text from this file — use a PDF or DOCX with selectable text, or add the person manually.",
+    };
+  }
+  // Cost guard, Claude call and ai_usage_log entry all live in lib/ai.ts.
+  return extractCv(text);
+}
+
+const CvConfirmInput = PersonInput.extend({
+  seniority: optional(z.enum(SENIORITY_LEVELS)),
+  functions: z.array(z.string().trim().max(60)).max(30).default([]),
+  skills: z.array(z.string().trim().max(60)).max(30).default([]),
+  sectors: z.array(z.string().trim().max(60)).max(30).default([]),
+  aiLogId: optional(z.string().uuid()),
+  parsedCv: ParsedCvSchema,
+});
+
+export async function createPersonFromCv(formData: FormData): Promise<ActionResult> {
+  await requireUser();
+  const file = formData.get("file") as File | null;
+  const payloadRaw = formData.get("payload");
+  if (!file || file.size === 0) return { ok: false, error: "The CV file went missing — re-attach it and retry." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
+  if (typeof payloadRaw !== "string") return { ok: false, error: "Invalid input." };
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloadRaw);
+  } catch {
+    return { ok: false, error: "Invalid input." };
+  }
+  const parsed = CvConfirmInput.safeParse(payload);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const input = parsed.data;
+
+  // Resolution before creation — the unchanged createPerson path. Ambiguous /
+  // matched / suppressed outcomes bubble straight back to the dialog.
+  const created = await createPerson(input);
+  if (!created.ok || !created.id) return created;
+  const personId = created.id;
+
+  // Store the CV with its standardised JSON, then complete the AI-usage
+  // audit trail: the parse-time log row gets the document id as source_ref.
+  const stored = await persistDocument(file, personId, "cv", input.parsedCv);
+  if (!stored.ok) {
+    return {
+      ok: false,
+      error: "The person was saved, but storing the CV failed — open their page and use Upload CV.",
+    };
+  }
+  if (input.aiLogId) await linkAiLogToDocument(input.aiLogId, stored.id);
+
+  // Enrich, never clobber: existing profile values win, CV values fill gaps.
+  // Sector tags outside the taxonomy aren't dropped — they land in skills.
+  const { data: current } = await db
+    .from("person")
+    .select("seniority, functions, skills, sectors")
+    .eq("id", personId)
+    .single();
+  const { sectors, rest } = partitionSectors(input.sectors);
+  const profiled = await updatePersonProfile({
+    personId,
+    seniority: current?.seniority ?? input.seniority ?? "",
+    functions: clampTags([...(current?.functions ?? []), ...input.functions]),
+    skills: clampTags([...(current?.skills ?? []), ...input.skills, ...rest]),
+    sectors: clampTags([...(current?.sectors ?? []), ...sectors]),
+  });
+  if (!profiled.ok) return profiled;
+
+  revalidatePath("/people");
+  revalidatePath(`/people/${personId}`);
+  return { ok: true, id: personId };
 }
 
 // ---------------------------------------------------------------------------

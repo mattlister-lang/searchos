@@ -59,6 +59,38 @@ export const SECTOR_TAXONOMY = [
 ] as const;
 
 /**
+ * Split candidate sector tags into taxonomy members and the rest (I1).
+ * CV extraction maps sectors into SECTOR_TAXONOMY where possible; anything
+ * that doesn't fit is not dropped — callers move it into the free-text
+ * skills field so no information is lost.
+ */
+export function partitionSectors(values: string[]): { sectors: string[]; rest: string[] } {
+  const sectors: string[] = [];
+  const rest: string[] = [];
+  for (const raw of values) {
+    const v = raw.trim().toLowerCase();
+    if (!v) continue;
+    if ((SECTOR_TAXONOMY as readonly string[]).includes(v)) sectors.push(v);
+    else rest.push(v);
+  }
+  return { sectors, rest };
+}
+
+/**
+ * Tag hygiene shared by every taxonomy write path: lowercase, trimmed,
+ * deduplicated, bounded to the limits the action-layer zod schemas enforce
+ * (≤60 chars per tag, ≤30 tags).
+ */
+export function clampTags(values: string[]): string[] {
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const v = raw.trim().toLowerCase();
+    if (v && v.length <= 60) seen.add(v);
+  }
+  return [...seen].slice(0, 30);
+}
+
+/**
  * Chance-to-fill weighting by candidacy stage (P2). Operator-tunable estimates
  * of the probability a candidacy at each stage ends in a placement. Same
  * discipline as DEAL_STAGE_WEIGHTS — estimates, not learned; tune later.
