@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
 import { label } from "@/lib/domain";
+import { searchEntities } from "@/lib/search";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -25,18 +25,9 @@ export default async function Search({
     );
   }
 
-  const like = `%${term}%`;
-  const [people, companies, jobs, deals] = await Promise.all([
-    db.from("person").select("id, full_name, location").is("erased_at", null)
-      .ilike("full_name", like).limit(15),
-    db.from("company").select("id, name, status").ilike("name", like).limit(15),
-    db.from("mandate").select("id, title, status, company(name)").ilike("title", like).limit(15),
-    db.from("deal").select("id, name, stage, company(id, name)").ilike("name", like).limit(15),
-  ]);
+  const { people, companies, jobs, deals } = await searchEntities(term, 15);
 
-  const total =
-    (people.data?.length ?? 0) + (companies.data?.length ?? 0) +
-    (jobs.data?.length ?? 0) + (deals.data?.length ?? 0);
+  const total = people.length + companies.length + jobs.length + deals.length;
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -47,11 +38,11 @@ export default async function Search({
         </span>
       </h1>
 
-      {(people.data?.length ?? 0) > 0 && (
+      {people.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base">People</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {people.data!.map((p) => (
+            {people.map((p) => (
               <Link key={p.id} href={`/people/${p.id}`} className="text-sm hover:underline">
                 <span className="font-medium">{p.full_name}</span>
                 {p.location && <span className="text-muted-foreground"> · {p.location}</span>}
@@ -61,11 +52,11 @@ export default async function Search({
         </Card>
       )}
 
-      {(companies.data?.length ?? 0) > 0 && (
+      {companies.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base">Companies</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {companies.data!.map((c) => (
+            {companies.map((c) => (
               <Link key={c.id} href={`/companies/${c.id}`}
                 className="flex items-center gap-2 text-sm hover:underline">
                 <span className="font-medium">{c.name}</span>
@@ -76,11 +67,11 @@ export default async function Search({
         </Card>
       )}
 
-      {(jobs.data?.length ?? 0) > 0 && (
+      {jobs.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base">Jobs</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {jobs.data!.map((m) => (
+            {jobs.map((m) => (
               <Link key={m.id} href={`/jobs/${m.id}`}
                 className="flex items-center gap-2 text-sm hover:underline">
                 <span className="font-medium">{m.title}</span>
@@ -92,11 +83,11 @@ export default async function Search({
         </Card>
       )}
 
-      {(deals.data?.length ?? 0) > 0 && (
+      {deals.length > 0 && (
         <Card>
           <CardHeader><CardTitle className="text-base">Deals</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {deals.data!.map((d) => (
+            {deals.map((d) => (
               <div key={d.id} className="flex items-center gap-2 text-sm">
                 <Link href="/deals" className="font-medium hover:underline">{d.name}</Link>
                 {d.company && (

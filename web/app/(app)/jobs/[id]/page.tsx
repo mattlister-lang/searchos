@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AddCandidacyDialog, MoveStageControl } from "@/components/forms/pipeline-forms";
+import { AddCandidacyDialog, MandateStatusControl, MoveStageControl } from "@/components/forms/pipeline-forms";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { db } from "@/lib/db";
 import { label, LIVE_STAGES, TERMINAL_STAGES } from "@/lib/domain";
@@ -17,7 +17,7 @@ export default async function JobPage({
 }) {
   const { id } = await params;
 
-  const [{ data: mandate }, { data: people }, { data: activities }] = await Promise.all([
+  const [{ data: mandate }, { data: activities }] = await Promise.all([
     db
       .from("mandate")
       .select(
@@ -30,7 +30,6 @@ export default async function JobPage({
       )
       .eq("id", id)
       .maybeSingle(),
-    db.from("person").select("id, full_name").is("erased_at", null).order("full_name").limit(500),
     db
       .from("activity")
       .select("id, type, occurred_at, subject, summary")
@@ -70,13 +69,14 @@ export default async function JobPage({
           <div className="flex shrink-0 gap-2">
             <LogActivityDialog mandateId={mandate.id} contextLabel={mandate.title} />
             <AddCandidacyDialog mandates={[{ id: mandate.id, title: mandate.title }]}
-              people={people ?? []} fixedMandateId={mandate.id} />
+              fixedMandateId={mandate.id} />
           </div>
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <Badge variant={mandate.status === "open" ? "default" : "outline"} className="capitalize">
             {label(mandate.status)}
           </Badge>
+          <MandateStatusControl mandateId={mandate.id} status={mandate.status} />
           {mandate.seniority && (
             <Badge variant="secondary" className="capitalize">{label(mandate.seniority)}</Badge>
           )}

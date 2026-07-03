@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { addCandidacy, createMandate, moveStage } from "@/lib/actions";
-import { CANDIDACY_STAGES, label } from "@/lib/domain";
+import { addCandidacy, createMandate, moveStage, setMandateStatus } from "@/lib/actions";
+import { CANDIDACY_STAGES, label, MANDATE_STATUSES } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { FormDialog, Field, TextField } from "@/components/forms/form-dialog";
+import { PersonPicker } from "@/components/forms/person-picker";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -54,7 +55,6 @@ export function NewMandateDialog() {
 
 export function AddCandidacyDialog(props: {
   mandates: { id: string; title: string }[];
-  people: { id: string; full_name: string }[];
   fixedMandateId?: string;
 }) {
   const f = useActionForm(addCandidacy, {
@@ -73,14 +73,11 @@ export function AddCandidacyDialog(props: {
       submitDisabled={!f.form.personId || !f.form.mandateId}
     >
       <Field label="Candidate">
-        <Select value={f.form.personId} onValueChange={(v) => v && f.set("personId")(v)}>
-          <SelectTrigger><SelectValue placeholder="Pick a person" /></SelectTrigger>
-          <SelectContent>
-            {props.people.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <PersonPicker
+          value={f.form.personId}
+          onChange={f.set("personId")}
+          placeholder="Search people by name…"
+        />
       </Field>
       {!props.fixedMandateId && (
         <Field label="Mandate">
@@ -135,6 +132,53 @@ export function MoveStageControl(props: { candidacyId: string; stage: string }) 
           <p className="text-sm text-muted-foreground">{confirm?.message}</p>
           <div className="flex gap-2">
             <Button disabled={pending} onClick={() => confirm && move(confirm.stage, true)}>
+              Confirm
+            </Button>
+            <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** Archive/close a job (UAT Q4). Same confirm-before-consequence shape as
+ *  MoveStageControl: closing an open job asks first, reopening/on-hold don't. */
+export function MandateStatusControl(props: { mandateId: string; status: string }) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState<{ message: string; status: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function set(status: string, confirmed = false) {
+    setPending(true);
+    setError(null);
+    const res = await setMandateStatus({ mandateId: props.mandateId, status, confirmed });
+    setPending(false);
+    if (res.ok) { setConfirm(null); router.refresh(); return; }
+    if ("needsConfirm" in res) setConfirm({ message: res.needsConfirm, status });
+    else if ("error" in res) setError(res.error);
+  }
+
+  return (
+    <>
+      <Select value={props.status} onValueChange={(v) => v && set(v)}>
+        <SelectTrigger className="h-8 w-36 text-xs capitalize"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {MANDATE_STATUSES.map((s) => (
+            <SelectItem key={s} value={s} className="capitalize text-xs">
+              {label(s)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Are you sure?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{confirm?.message}</p>
+          <div className="flex gap-2">
+            <Button disabled={pending} onClick={() => confirm && set(confirm.status, true)}>
               Confirm
             </Button>
             <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>

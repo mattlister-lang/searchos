@@ -131,3 +131,18 @@ forever in non-interactive shells. → Never bare `cat`/`read` in scripted
 steps; prefer heredocs/explicit files; after any timeout, verify what
 actually executed before retrying. → This register; deploy steps split
 into verifiable stages.
+
+**L-017 · 2026-07-03 · `next build` green but eslint red on new typeahead effects.**
+The first debounced-search effects (PersonPicker, HeaderSearch, UAT R1) cleared
+their results with a synchronous `setState` in the effect body on the
+too-short-query branch; `next build` passed clean, but `eslint` errored with
+`react-hooks/set-state-in-effect` ("calling setState synchronously within an
+effect can trigger cascading renders"). → `next build` typechecks but does not
+run the react-hooks lint rules — the lint gate is separate and stricter than
+the build. → Run `npx eslint` on touched files before "done", not just the
+build; inside an effect, do state resets after the async boundary (inside the
+awaited IIFE), never directly in the effect body. → engineering.md §6 names
+build+typecheck as the floor; treat `eslint` (react-hooks) as an additional
+gate and lint the changed files every PR. (Note: pre-existing
+`no-explicit-any` errors already sit in `people/[id]/page.tsx` — separate debt,
+untouched here.)
