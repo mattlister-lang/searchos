@@ -25,12 +25,13 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 export default async function Dashboard() {
-  const [people, deals, candidacies, actions, pulse] = await Promise.all([
+  const [people, deals, candidacies, actions, pulse, interviews] = await Promise.all([
     db.from("person").select("id", { count: "exact", head: true }).is("erased_at", null),
     db.from("deal").select("id", { count: "exact", head: true }).not("stage", "in", '("won","lost")'),
     db.from("candidacy").select("id", { count: "exact", head: true }).not("stage", "in", '("placed","rejected","withdrawn")'),
     db.from("v_next_actions").select("*"),
     db.from("v_activity_pulse").select("*").order("last_30d", { ascending: false }),
+    db.from("v_upcoming_interviews").select("*").limit(10),
   ]);
 
   const stats = [
@@ -102,6 +103,40 @@ export default async function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {(interviews.data ?? []).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Upcoming interviews</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Candidate</TableHead>
+                  <TableHead>Mandate</TableHead>
+                  <TableHead className="text-right">Round</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(interviews.data ?? []).map((iv) => (
+                  <TableRow key={iv.interview_id}>
+                    <TableCell className="tabular-nums">{fmtDate(iv.scheduled_at)}</TableCell>
+                    <TableCell className="font-medium">{iv.candidate}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {iv.mandate} · {iv.client}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {iv.round} <span className="capitalize text-muted-foreground">({String(iv.kind).replaceAll("_", " ")})</span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -113,7 +113,7 @@ searchos/
 conversationally and via CSV, intelligence comes from Claude + the insight
 views (`v_next_actions`, `v_funnel`, `v_stage_dwell`, `v_activity_pulse`,
 `v_fee_income`), every mutation lands in `audit_log` (ADR-020). Migrations
-0001–0005 are live on the Pro project.
+0001–0006 are live on the Pro project.
 **Long term (ADR-019):** productise as deployment-per-firm SaaS — never
 shared-table tenancy, no `tenant_id` retrofit. ADR-016's gate stands: boringly
 reliable for one user for a full quarter first.

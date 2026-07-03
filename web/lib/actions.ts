@@ -304,6 +304,13 @@ const MandateInput = z.object({
   companyName: z.string().trim().min(2),
   title: z.string().trim().min(2),
   brief: optional(z.string().trim().max(10000)),
+  seniority: optional(z.string().trim().max(40)),
+  location: optional(z.string().trim().max(200)),
+  salaryRange: optional(z.string().trim().max(100)),
+  skills: z.preprocess(
+    (v) => (typeof v === "string" ? v.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : v ?? []),
+    z.array(z.string().max(60)).max(30),
+  ),
 });
 
 export async function createMandate(raw: unknown): Promise<ActionResult> {
@@ -321,6 +328,10 @@ export async function createMandate(raw: unknown): Promise<ActionResult> {
       title: input.title,
       status: "open",
       brief: input.brief ?? null,
+      seniority: input.seniority ?? null,
+      location: input.location ?? null,
+      salary_range: input.salaryRange ?? null,
+      skills: input.skills,
       opened_at: new Date().toISOString().slice(0, 10),
     })
     .select("id")
@@ -478,4 +489,179 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   if (error || !data) return { ok: false, error: "Metadata insert failed." };
   revalidatePath(`/people/${personId}`);
   return { ok: true, id: data.id };
+}
+
+// ---------------------------------------------------------------------------
+// Phase B: interviews, offer→boarded→invoiced→paid, taxonomy (0006)
+// ---------------------------------------------------------------------------
+
+export const SENIORITY_LEVELS = ["junior", "mid", "senior", "manager", "head", "director", "vp", "c_suite"] as const;
+export const SECTOR_TAXONOMY = ["hydrogen", "zev", "solar", "battery", "grid", "flexibility", "other"] as const;
+
+const csvToArray = z.preprocess(
+  (v) => (typeof v === "string" ? v.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : v ?? []),
+  z.array(z.string().max(60)).max(30),
+);
+
+const InterviewInput = z.object({
+  candidacyId: z.string().uuid(),
+  round: z.coerce.number().int().min(1).max(20).default(1),
+  kind: z.enum(["consultant", "phone", "video", "in_person", "panel", "final"]),
+  scheduledAt: optional(z.string()),
+  location: optional(z.string().trim().max(300)),
+  notes: optional(z.string().trim().max(5000)),
+});
+
+export async function logInterview(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = InterviewInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const i = parsed.data;
+  const { data, error } = await db
+    .from("interview")
+    .insert({
+      candidacy_id: i.candidacyId,
+      round: i.round,
+      kind: i.kind,
+      scheduled_at: i.scheduledAt ? new Date(i.scheduledAt).toISOString() : null,
+      location: i.location ?? null,
+      notes: i.notes ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Insert failed." };
+  revalidatePath("/");
+  return { ok: true, id: data.id };
+}
+
+const OutcomeInput = z.object({
+  interviewId: z.string().uuid(),
+  outcome: z.enum(["scheduled", "passed", "failed", "cancelled", "no_show"]),
+  feedback: optional(z.string().trim().max(10000)),
+});
+
+export async function setInterviewOutcome(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = OutcomeInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { error } = await db
+    .from("interview")
+    .update({ outcome: parsed.data.outcome, feedback: parsed.data.feedback ?? null })
+    .eq("id", parsed.data.interviewId);
+  if (error) return { ok: false, error: "Update failed." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+const OfferInput = z.object({
+  candidacyId: z.string().uuid(),
+  salary: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().positive().optional()),
+  feeAmount: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().positive().optional()),
+  offerAcceptedAt: optional(z.string()),
+  startDate: optional(z.string()),
+  board: z.boolean().default(false),
+});
+
+export async function recordOffer(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = OfferInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const o = parsed.data;
+
+  // The brief's rule: a fee is boarded only when the offer is accepted AND a
+  // start date is agreed.
+  if (o.board && (!o.offerAcceptedAt || !o.startDate)) {
+    return { ok: false, error: "Board only when the offer is accepted AND a start date is agreed." };
+  }
+  if (o.board && !o.feeAmount) {
+    return { ok: false, error: "Boarding needs a fee amount." };
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (o.salary !== undefined) patch.salary = o.salary;
+  if (o.feeAmount !== undefined) patch.fee_amount = o.feeAmount;
+  if (o.offerAcceptedAt) patch.offer_accepted_at = new Date(o.offerAcceptedAt).toISOString();
+  if (o.startDate) patch.start_date = o.startDate;
+  if (o.board) patch.boarded_at = new Date().toISOString();
+
+  const { error } = await db.from("candidacy").update(patch).eq("id", o.candidacyId);
+  if (error) return { ok: false, error: "Update failed." };
+  revalidatePath("/billings");
+  return { ok: true };
+}
+
+const InvoiceInput = z.object({
+  candidacyId: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+  terms: optional(z.string().trim().max(500)),
+  issuedAt: optional(z.string()),
+  dueDate: optional(z.string()),
+});
+
+export async function createInvoice(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = InvoiceInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const i = parsed.data;
+  const { data, error } = await db
+    .from("invoice")
+    .insert({
+      candidacy_id: i.candidacyId,
+      amount: i.amount,
+      terms: i.terms ?? null,
+      issued_at: i.issuedAt ?? null,
+      due_date: i.dueDate ?? null,
+      status: i.issuedAt ? "issued" : "draft",
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Insert failed." };
+  revalidatePath("/billings");
+  return { ok: true, id: data.id };
+}
+
+export async function markInvoicePaid(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = z.object({ invoiceId: z.string().uuid() }).safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { error } = await db
+    .from("invoice")
+    .update({ status: "paid", paid_at: new Date().toISOString().slice(0, 10) })
+    .eq("id", parsed.data.invoiceId);
+  if (error) return { ok: false, error: "Update failed." };
+  revalidatePath("/billings");
+  return { ok: true };
+}
+
+const ProfileInput = z.object({
+  personId: z.string().uuid(),
+  seniority: optional(z.enum(SENIORITY_LEVELS)),
+  functions: csvToArray,
+  skills: csvToArray,
+  sectors: csvToArray,
+  location: optional(z.string().trim().max(200)),
+});
+
+export async function updatePersonProfile(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = ProfileInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const p = parsed.data;
+  const badSectors = p.sectors.filter((s) => !(SECTOR_TAXONOMY as readonly string[]).includes(s));
+  if (badSectors.length) {
+    return { ok: false, error: `Unknown sectors: ${badSectors.join(", ")}. Taxonomy: ${SECTOR_TAXONOMY.join(", ")}.` };
+  }
+  const { error } = await db
+    .from("person")
+    .update({
+      seniority: p.seniority ?? null,
+      functions: p.functions,
+      skills: p.skills,
+      sectors: p.sectors,
+      ...(p.location !== undefined ? { location: p.location } : {}),
+    })
+    .eq("id", p.personId);
+  if (error) return { ok: false, error: "Update failed." };
+  revalidatePath(`/people/${p.personId}`);
+  return { ok: true };
 }
