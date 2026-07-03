@@ -82,6 +82,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "activity_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "activity_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -148,6 +155,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "person"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_participant_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
           },
           {
             foreignKeyName: "activity_participant_person_id_fkey"
@@ -336,6 +350,13 @@ export type Database = {
             foreignKeyName: "candidacy_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
+          },
+          {
+            foreignKeyName: "candidacy_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
             referencedRelation: "v_pipeline"
             referencedColumns: ["person_id"]
           },
@@ -427,6 +448,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "v_activity_pulse"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "company_domain_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
             referencedColumns: ["company_id"]
           },
         ]
@@ -523,11 +551,25 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "deal_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "deal_primary_contact_id_fkey"
             columns: ["primary_contact_id"]
             isOneToOne: false
             referencedRelation: "person"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deal_primary_contact_id_fkey"
+            columns: ["primary_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
           },
           {
             foreignKeyName: "deal_primary_contact_id_fkey"
@@ -621,6 +663,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "document_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "document_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -661,6 +710,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "person"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
           },
           {
             foreignKeyName: "document_person_id_fkey"
@@ -742,11 +798,25 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "employment_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "employment_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "person"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employment_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
           },
           {
             foreignKeyName: "employment_person_id_fkey"
@@ -1031,6 +1101,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "mandate_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "mandate_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -1116,6 +1193,13 @@ export type Database = {
             foreignKeyName: "merge_queue_person_a_fkey"
             columns: ["person_a"]
             isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
+          },
+          {
+            foreignKeyName: "merge_queue_person_a_fkey"
+            columns: ["person_a"]
+            isOneToOne: false
             referencedRelation: "v_pipeline"
             referencedColumns: ["person_id"]
           },
@@ -1146,6 +1230,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "person"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merge_queue_person_b_fkey"
+            columns: ["person_b"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
           },
           {
             foreignKeyName: "merge_queue_person_b_fkey"
@@ -1265,6 +1356,13 @@ export type Database = {
             foreignKeyName: "person_email_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
+          },
+          {
+            foreignKeyName: "person_email_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
             referencedRelation: "v_pipeline"
             referencedColumns: ["person_id"]
           },
@@ -1335,10 +1433,12 @@ export type Database = {
       v_deal_board: {
         Row: {
           company: string | null
+          company_id: string | null
           deal_id: string | null
           name: string | null
           next_step: string | null
           primary_contact: string | null
+          primary_contact_id: string | null
           stage: Database["public"]["Enums"]["deal_stage"] | null
           updated_at: string | null
           value: number | null

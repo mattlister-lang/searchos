@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CreateInvoiceDialog, MarkPaidButton } from "@/components/forms/billing-forms";
 import { db } from "@/lib/db";
 import { fmtDate, fmtMoney } from "@/lib/format";
@@ -16,12 +17,12 @@ export default async function Billings() {
     db.from("v_sales_board").select("*"),
     db
       .from("candidacy")
-      .select("id, salary, fee_amount, offer_accepted_at, start_date, boarded_at, placed_at, person:person_id(full_name), mandate:mandate_id(title, company(name))")
+      .select("id, salary, fee_amount, offer_accepted_at, start_date, boarded_at, placed_at, person:person_id(id, full_name), mandate:mandate_id(id, title, company(name))")
       .not("placed_at", "is", null)
       .order("placed_at", { ascending: false }),
     db
       .from("invoice")
-      .select("id, amount, status, issued_at, due_date, paid_at, terms, candidacy:candidacy_id(person:person_id(full_name), mandate:mandate_id(title))")
+      .select("id, amount, status, issued_at, due_date, paid_at, terms, candidacy:candidacy_id(person:person_id(id, full_name), mandate:mandate_id(id, title))")
       .order("created_at", { ascending: false }),
   ]);
 
@@ -89,9 +90,19 @@ export default async function Billings() {
                   const label = `${person?.full_name ?? "[erased]"} · ${mandate?.title ?? ""}`;
                   return (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium">{person?.full_name ?? "[erased]"}</TableCell>
+                      <TableCell className="font-medium">
+                        {person ? (
+                          <Link href={`/people/${person.id}`} className="hover:underline">
+                            {person.full_name}
+                          </Link>
+                        ) : "[erased]"}
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {mandate?.title} · {mandate?.company?.name}
+                        {mandate && (
+                          <Link href={`/jobs/${mandate.id}`} className="hover:underline">
+                            {mandate.title}
+                          </Link>
+                        )}{" "}· {mandate?.company?.name}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{fmtMoney(p.salary)}</TableCell>
                       <TableCell className="text-right tabular-nums">{fmtMoney(p.fee_amount)}</TableCell>

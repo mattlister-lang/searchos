@@ -357,6 +357,10 @@ declare n int;
 begin
   perform * from v_pipeline;
   perform * from v_deal_board;
+  -- 0007: the board exposes link ids
+  if not exists (select 1 from v_deal_board where company_id is not null) then
+    raise exception 'TEST 7 FAILED: v_deal_board missing company_id link';
+  end if;
   perform * from v_relationship_freshness;
   perform * from v_retention_review;
   perform * from v_ai_spend;

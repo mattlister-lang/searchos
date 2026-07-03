@@ -121,3 +121,13 @@ hand-written interfaces asserts wishes, not facts. → Generated types are
 the only source of row shapes; view fields are always nullable and must be
 guarded at render. → database.types.ts + typed client; regeneration is in
 the DoD; TypeScript now fails the build on the next violation.
+
+**L-016 · 2026-07-03 · A bare `cat >>` silently hung a compound deploy step.**
+A stray `cat >> file` with no input source blocked on stdin inside a
+compound command; everything after it (local tests, live deploy, typegen)
+silently never ran, and the step "failed" only by timeout. → Compound shell
+steps hide which command is at fault, and stdin-reading commands hang
+forever in non-interactive shells. → Never bare `cat`/`read` in scripted
+steps; prefer heredocs/explicit files; after any timeout, verify what
+actually executed before retrying. → This register; deploy steps split
+into verifiable stages.

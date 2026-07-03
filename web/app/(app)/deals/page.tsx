@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { DealDialog, NewCompanyDialog } from "@/components/forms/deal-dialogs";
 import { OPEN_DEAL_STAGES } from "@/lib/domain";
 import { db } from "@/lib/db";
@@ -62,9 +63,19 @@ export default async function Deals() {
                 return (
                   <TableRow key={d.deal_id}>
                     <TableCell className="font-medium">{d.name}</TableCell>
-                    <TableCell>{d.company}</TableCell>
+                    <TableCell>
+                      {d.company_id ? (
+                        <Link href={`/companies/${d.company_id}`} className="hover:underline">
+                          {d.company}
+                        </Link>
+                      ) : d.company}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {d.primary_contact ?? "—"}
+                      {d.primary_contact_id ? (
+                        <Link href={`/people/${d.primary_contact_id}`} className="hover:underline">
+                          {d.primary_contact}
+                        </Link>
+                      ) : (d.primary_contact ?? "—")}
                     </TableCell>
                     <TableCell>
                       <Badge className="capitalize">{d.stage}</Badge>

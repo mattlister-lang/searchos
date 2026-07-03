@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 const NAV = [
   { href: "/", label: "Dashboard" },
   { href: "/pipeline", label: "Pipeline" },
+  { href: "/jobs", label: "Jobs" },
+  { href: "/companies", label: "Companies" },
   { href: "/deals", label: "Deals" },
   { href: "/people", label: "People" },
   { href: "/billings", label: "Billings" },
@@ -41,7 +43,18 @@ export default async function AppLayout({
           </Button>
         </form>
       </aside>
-      <main className="flex-1 overflow-x-hidden p-6 lg:p-8">{children}</main>
+      <div className="flex flex-1 flex-col overflow-x-hidden">
+        <header className="border-b px-6 py-3 lg:px-8">
+          <form action="/search" method="get" className="max-w-sm">
+            <input
+              name="q"
+              placeholder="Search people, companies, jobs, deals…"
+              className="w-full rounded-md border bg-transparent px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50"
+            />
+          </form>
+        </header>
+        <main className="flex-1 p-6 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }
