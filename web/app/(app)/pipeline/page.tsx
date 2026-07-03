@@ -1,25 +1,26 @@
 import Link from "next/link";
 import {
   AddCandidacyDialog,
-  MoveStageControl,
   NewMandateDialog,
 } from "@/components/forms/pipeline-forms";
 import { db } from "@/lib/db";
 import { daysSince } from "@/lib/format";
-import { label, LIVE_STAGES, TERMINAL_STAGES } from "@/lib/domain";
+import { chanceToFill, label, LIVE_STAGES } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-// Grouped by mandate, and every open mandate is shown — including ones with
-// no candidates yet. Absence of candidates is information (L-004).
+// Slimmed pipeline (P2): one compact summary per open mandate — live count,
+// stage distribution, chance-to-fill, movement recency. The full kanban lives
+// on the job page (/jobs/[id]); this is the birds-eye. Every open mandate is
+// shown, including ones with no candidates yet — absence is information (L-004).
 export default async function Pipeline() {
   const { data: mandates } = await db
     .from("mandate")
     .select(
-      `id, title, status, company(id, name),
-       candidacy(id, stage, stage_changed_at, person(id, full_name))`,
+      `id, title, company(id, name),
+       candidacy(stage, stage_changed_at)`,
     )
     .eq("status", "open")
     .order("opened_at", { ascending: false });
@@ -28,7 +29,7 @@ export default async function Pipeline() {
   const mandateOptions = jobs.map((m) => ({ id: m.id, title: m.title }));
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
         <div className="flex gap-2">
@@ -43,82 +44,77 @@ export default async function Pipeline() {
         </p>
       )}
 
-      {jobs.map((m) => {
-        const columns = LIVE_STAGES.map((stage) => ({
-          stage,
-          cards: m.candidacy.filter((c) => c.stage === stage),
-        }));
-        const liveCount = m.candidacy.filter(
-          (c) => !(TERMINAL_STAGES as readonly string[]).includes(c.stage),
-        ).length;
-        return (
-          <section key={m.id}>
-            <div className="mb-3 flex items-baseline justify-between">
-              <h2 className="font-heading text-lg font-medium">
-                <Link href={`/jobs/${m.id}`} className="hover:underline">
-                  {m.title}
-                </Link>{" "}
-                <span className="text-sm font-normal text-muted-foreground">
-                  ·{" "}
-                  {m.company && (
-                    <Link href={`/companies/${m.company.id}`} className="hover:underline">
-                      {m.company.name}
-                    </Link>
-                  )}
-                </span>
-              </h2>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {liveCount} live
-              </span>
-            </div>
+      <div className="flex flex-col gap-3">
+        {jobs.map((m) => {
+          const dist = LIVE_STAGES.map((stage) => ({
+            stage,
+            n: m.candidacy.filter((c) => c.stage === stage).length,
+          }));
+          const liveStages = m.candidacy
+            .map((c) => c.stage)
+            .filter((s) => (LIVE_STAGES as readonly string[]).includes(s));
+          const liveCount = liveStages.length;
+          const chance = chanceToFill(liveStages);
 
-            {m.candidacy.length === 0 ? (
-              <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                No candidates yet — use “Add candidate” to start the long list.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <div className="flex min-w-max gap-4">
-                  {columns.map((col) => (
-                    <div key={col.stage} className="w-56 shrink-0">
-                      <div className="mb-2 flex items-center justify-between px-1">
-                        <span className="text-xs font-medium capitalize">
-                          {label(col.stage)}
-                        </span>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {col.cards.length}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {col.cards.map((c) => {
-                          const days = daysSince(c.stage_changed_at) ?? 0;
-                          return (
-                            <Card key={c.id} className="py-3">
-                              <CardContent className="px-3">
-                                <Link href={`/people/${c.person?.id}`}
-                                  className="text-sm font-medium hover:underline">
-                                  {c.person?.full_name}
-                                </Link>
-                                <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                                  {days}d{" "}
-                                  {days > 14 && <Badge variant="outline">stale</Badge>}
-                                </p>
-                                <div className="mt-2">
-                                  <MoveStageControl candidacyId={c.id} stage={c.stage} />
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+          // Days since the most recent stage movement across all candidacies.
+          const moveDays = m.candidacy
+            .map((c) => daysSince(c.stage_changed_at))
+            .filter((d): d is number => d != null);
+          const sinceMove = moveDays.length ? Math.min(...moveDays) : null;
+          const stale = sinceMove != null && sinceMove > 14;
+
+          return (
+            <Card key={m.id}>
+              <CardContent className="flex flex-col gap-3 py-4">
+                <div className="flex items-baseline justify-between gap-4">
+                  <div className="min-w-0 truncate">
+                    <Link href={`/jobs/${m.id}`} className="font-heading font-medium hover:underline">
+                      {m.title}
+                    </Link>
+                    {m.company && (
+                      <span className="text-sm text-muted-foreground">
+                        {" · "}
+                        <Link href={`/companies/${m.company.id}`} className="hover:underline">
+                          {m.company.name}
+                        </Link>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-baseline gap-3 text-sm">
+                    <span className="text-muted-foreground tabular-nums">{liveCount} live</span>
+                    <span className="font-semibold tabular-nums">{Math.round(chance * 100)}%</span>
+                  </div>
                 </div>
-              </div>
-            )}
-          </section>
-        );
-      })}
+
+                <div className="flex h-2 w-full gap-px overflow-hidden rounded-full bg-muted">
+                  {dist
+                    .filter((d) => d.n > 0)
+                    .map((d) => (
+                      <div
+                        key={d.stage}
+                        style={{ flexGrow: d.n }}
+                        title={`${label(d.stage)}: ${d.n}`}
+                        className="bg-primary"
+                      />
+                    ))}
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>chance to fill</span>
+                  {m.candidacy.length === 0 ? (
+                    <span>no candidates yet</span>
+                  ) : (
+                    <span className="flex items-center gap-2 tabular-nums">
+                      {sinceMove == null ? "no movement yet" : `${sinceMove}d since last move`}
+                      {stale && <Badge variant="outline">stale</Badge>}
+                    </span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 }

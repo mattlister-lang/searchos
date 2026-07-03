@@ -4,7 +4,8 @@ import { updatePersonProfile } from "@/lib/actions";
 import { SENIORITY_LEVELS } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
-import { FormDialog, SelectField, TextField } from "@/components/forms/form-dialog";
+import { FormDialog, Field, SelectField, TextField } from "@/components/forms/form-dialog";
+import { TagInput } from "@/components/forms/tag-input";
 
 export function EditProfileDialog(props: {
   personId: string;
@@ -16,9 +17,9 @@ export function EditProfileDialog(props: {
 }) {
   const f = useActionForm(updatePersonProfile, {
     seniority: props.seniority ?? "",
-    functions: props.functions.join(", "),
-    skills: props.skills.join(", "),
-    sectors: props.sectors.join(", "),
+    functions: props.functions,
+    skills: props.skills,
+    sectors: props.sectors,
     location: props.location ?? "",
   });
 
@@ -33,12 +34,18 @@ export function EditProfileDialog(props: {
     >
       <SelectField label="Seniority" value={f.form.seniority} onChange={f.set("seniority")}
         options={SENIORITY_LEVELS} placeholder="Pick a level" />
-      <TextField label="Functions (comma-separated)" placeholder="commercial, origination"
-        value={f.form.functions} onChange={f.setField("functions")} />
-      <TextField label="Skills (comma-separated)" placeholder="ppa, project finance"
-        value={f.form.skills} onChange={f.setField("skills")} />
-      <TextField label="Sectors (hydrogen, zev, solar, battery, grid, flexibility, other)"
-        value={f.form.sectors} onChange={f.setField("sectors")} />
+      <Field label="Functions">
+        <TagInput field="functions" value={f.form.functions} onChange={f.set("functions")}
+          placeholder="commercial, origination…" />
+      </Field>
+      <Field label="Skills">
+        <TagInput field="skills" value={f.form.skills} onChange={f.set("skills")}
+          placeholder="ppa, project finance…" />
+      </Field>
+      <Field label="Sectors">
+        <TagInput field="sectors" value={f.form.sectors} onChange={f.set("sectors")}
+          placeholder="hydrogen, solar…" />
+      </Field>
       <TextField label="Location" value={f.form.location} onChange={f.setField("location")} />
     </FormDialog>
   );

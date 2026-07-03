@@ -5,6 +5,7 @@ import { COMPANY_STATUSES } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
 import { FormDialog, Field, SelectField, TextField } from "@/components/forms/form-dialog";
+import { TagInput } from "@/components/forms/tag-input";
 import { Textarea } from "@/components/ui/textarea";
 
 /** Edit a company in place (UAT Q5): status, sectors, notes, and add a domain.
@@ -17,7 +18,7 @@ export function EditCompanyDialog(props: {
 }) {
   const f = useActionForm(updateCompany, {
     status: props.status,
-    sectors: props.sectors.join(", "),
+    sectors: props.sectors,
     notes: props.notes ?? "",
     addDomain: "",
   });
@@ -33,8 +34,10 @@ export function EditCompanyDialog(props: {
     >
       <SelectField label="Status" value={f.form.status} onChange={f.set("status")}
         options={COMPANY_STATUSES} />
-      <TextField label="Sectors (hydrogen, zev, solar, battery, grid, flexibility, other)"
-        value={f.form.sectors} onChange={f.setField("sectors")} />
+      <Field label="Sectors">
+        <TagInput field="sectors" value={f.form.sectors} onChange={f.set("sectors")}
+          placeholder="hydrogen, solar…" />
+      </Field>
       <Field label="Notes">
         <Textarea rows={4} value={f.form.notes} onChange={f.setField("notes")} />
       </Field>

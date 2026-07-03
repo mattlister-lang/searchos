@@ -713,6 +713,67 @@ export async function searchPeople(raw: unknown): Promise<PersonSearchResult> {
   return { ok: true, people };
 }
 
+// ---------------------------------------------------------------------------
+// Q6 — tag autocomplete. Suggests existing values so the taxonomy doesn't
+// drift ("hydrogen" vs "hydrogn"). Sectors come from the fixed taxonomy;
+// skills/functions from distinct values already in use across the data.
+// ---------------------------------------------------------------------------
+
+export type TagSuggestResult =
+  | { ok: true; tags: string[] }
+  | { ok: false; error: string };
+
+const SuggestTagsInput = z.object({
+  field: z.enum(["skills", "functions", "sectors"]),
+  q: z.string().trim().min(1),
+});
+
+/** Boring linear scan over ≤200 rows — fine at this scale. Candidate for a SQL
+ *  lateral `unnest` distinct-values view if the pool ever grows large. */
+export async function suggestTags(raw: unknown): Promise<TagSuggestResult> {
+  await requireUser();
+  const parsed = SuggestTagsInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Type at least 1 character." };
+  const { field, q } = parsed.data;
+  const prefix = q.toLowerCase();
+
+  // Fixed taxonomy: no query needed.
+  if (field === "sectors") {
+    return { ok: true, tags: SECTOR_TAXONOMY.filter((s) => s.startsWith(prefix)).slice(0, 8) };
+  }
+
+  // Distinct existing skills/functions. Skills also come from mandates. We
+  // fetch the arrays and flatten in TS — empty arrays are harmless noise the
+  // prefix filter drops. (A DB-side "not empty" filter can't be expressed
+  // type-safely: the typed client string-interpolates `.neq` values, so the
+  // `'{}'` literal an array column needs won't pass without a banned cast —
+  // L-018.)
+  const pool: string[] = [];
+  if (field === "skills") {
+    const [people, mandates] = await Promise.all([
+      db.from("person").select("skills").limit(200),
+      db.from("mandate").select("skills").limit(200),
+    ]);
+    (people.data ?? []).forEach((r) => pool.push(...r.skills));
+    (mandates.data ?? []).forEach((r) => pool.push(...r.skills));
+  } else {
+    const people = await db.from("person").select("functions").limit(200);
+    (people.data ?? []).forEach((r) => pool.push(...r.functions));
+  }
+
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const value of pool) {
+    const t = value.toLowerCase();
+    if (t.startsWith(prefix) && !seen.has(t)) {
+      seen.add(t);
+      tags.push(t);
+      if (tags.length >= 8) break;
+    }
+  }
+  return { ok: true, tags };
+}
+
 export type SearchAllResult =
   | ({ ok: true } & SearchResults)
   | { ok: false; error: string };

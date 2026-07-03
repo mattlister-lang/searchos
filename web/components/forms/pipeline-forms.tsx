@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { FormDialog, Field, TextField } from "@/components/forms/form-dialog";
 import { PersonPicker } from "@/components/forms/person-picker";
+import { TagInput } from "@/components/forms/tag-input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -19,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 export function NewMandateDialog() {
   const f = useActionForm(createMandate, {
     companyName: "", title: "", brief: "",
-    seniority: "", location: "", salaryRange: "", skills: "",
+    seniority: "", location: "", salaryRange: "", skills: [] as string[],
   });
 
   return (
@@ -43,12 +44,12 @@ export function NewMandateDialog() {
         <TextField label="Location" value={f.form.location}
           onChange={f.setField("location")} />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Salary range" placeholder="£120-150k" value={f.form.salaryRange}
-          onChange={f.setField("salaryRange")} />
-        <TextField label="Skills (comma-sep)" placeholder="ppa, origination"
-          value={f.form.skills} onChange={f.setField("skills")} />
-      </div>
+      <TextField label="Salary range" placeholder="£120-150k" value={f.form.salaryRange}
+        onChange={f.setField("salaryRange")} />
+      <Field label="Skills">
+        <TagInput field="skills" value={f.form.skills} onChange={f.set("skills")}
+          placeholder="ppa, origination…" />
+      </Field>
     </FormDialog>
   );
 }

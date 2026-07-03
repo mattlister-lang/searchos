@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { NewCompanyDialog } from "@/components/forms/deal-dialogs";
+import { FilterBar, toOptions } from "@/components/filter-bar";
 import { db } from "@/lib/db";
-import { label } from "@/lib/domain";
+import { asMember, COMPANY_STATUSES, label, SECTOR_TAXONOMY } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -10,11 +11,22 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function Companies() {
-  const { data } = await db
+export default async function Companies({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; sector?: string }>;
+}) {
+  const sp = await searchParams;
+  const status = asMember(COMPANY_STATUSES, sp.status);
+  const sector = asMember(SECTOR_TAXONOMY, sp.sector);
+
+  let query = db
     .from("company")
     .select("id, name, status, sectors, company_domain(domain), employment(id), deal(id, stage), mandate(id, status)")
     .order("name");
+  if (status) query = query.eq("status", status);
+  if (sector) query = query.contains("sectors", [sector]);
+  const { data } = await query;
   const companies = data ?? [];
 
   return (
@@ -23,6 +35,11 @@ export default async function Companies() {
         <h1 className="font-heading text-2xl font-semibold">Companies</h1>
         <NewCompanyDialog />
       </div>
+
+      <FilterBar filters={[
+        { param: "status", label: "Status", options: toOptions(COMPANY_STATUSES) },
+        { param: "sector", label: "Sector", options: toOptions(SECTOR_TAXONOMY) },
+      ]} />
 
       <Card>
         <CardContent>
