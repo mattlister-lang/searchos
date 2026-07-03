@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   InterviewOutcomeControl,
@@ -36,9 +37,9 @@ export default async function PersonPage({
           `id, full_name, location, profile, linkedin_url, erased_at, created_at,
            seniority, functions, skills, sectors,
            person_email(email, is_primary),
-           employment(title, is_current, start_date, end_date, company(name)),
+           employment(title, is_current, start_date, end_date, company(id, name)),
            candidacy(id, stage, stage_changed_at, placed_at, notes,
-                     mandate(title, company(name)),
+                     mandate(id, title, company(id, name)),
                      interview(id, round, kind, scheduled_at, outcome))`,
         )
         .eq("id", id)
@@ -138,7 +139,11 @@ export default async function PersonPage({
               <span>
                 <span className="font-medium">{e.title ?? "Role unknown"}</span>{" "}
                 <span className="text-muted-foreground">
-                  at {e.company?.name ?? "—"}
+                  at {e.company ? (
+                    <Link href={`/companies/${e.company.id}`} className="hover:underline">
+                      {e.company.name}
+                    </Link>
+                  ) : "—"}
                 </span>
               </span>
               {e.is_current && <Badge>current</Badge>}
@@ -161,7 +166,9 @@ export default async function PersonPage({
             <div key={c.id ?? i} className="rounded-md border p-3">
               <div className="flex items-baseline justify-between text-sm">
                 <span>
-                  <span className="font-medium">{c.mandate?.title}</span>{" "}
+                  <Link href={`/jobs/${c.mandate?.id}`} className="font-medium hover:underline">
+                    {c.mandate?.title}
+                  </Link>{" "}
                   <span className="text-muted-foreground">
                     · {c.mandate?.company?.name}
                   </span>

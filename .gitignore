@@ -20,3 +20,6 @@ supabase/.branches/
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Next.js build artifacts
+.next/
