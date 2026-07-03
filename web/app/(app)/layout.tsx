@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { HeaderSearch } from "@/components/header-search";
 import { Button } from "@/components/ui/button";
 
 const NAV = [
@@ -45,13 +46,7 @@ export default async function AppLayout({
       </aside>
       <div className="flex flex-1 flex-col overflow-x-hidden">
         <header className="border-b px-6 py-3 lg:px-8">
-          <form action="/search" method="get" className="max-w-sm">
-            <input
-              name="q"
-              placeholder="Search people, companies, jobs, deals…"
-              className="w-full rounded-md border bg-transparent px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50"
-            />
-          </form>
+          <HeaderSearch />
         </header>
         <main className="flex-1 p-6 lg:p-8">{children}</main>
       </div>

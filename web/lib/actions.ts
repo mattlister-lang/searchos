@@ -13,6 +13,8 @@ import {
   DEAL_STAGES,
   INTERVIEW_KINDS,
   INTERVIEW_OUTCOMES,
+  label,
+  MANDATE_STATUSES,
   SECTOR_TAXONOMY,
   SENIORITY_LEVELS,
 } from "@/lib/domain";
@@ -23,6 +25,7 @@ import {
   resolvePerson,
   type NameCandidate,
 } from "@/lib/resolve";
+import { searchEntities, type SearchResults } from "@/lib/search";
 
 /**
  * The write surface (ADR-022). Every action: allowlisted user, validated
@@ -668,4 +671,157 @@ export async function updatePersonProfile(raw: unknown): Promise<ActionResult> {
   if (error) return { ok: false, error: "Update failed." };
   revalidatePath(`/people/${p.personId}`);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Typeahead search (read) — powers PersonPicker (Q1) and HeaderSearch (Q2).
+// Reads, but they run through the same allowlisted server-action surface.
+// ---------------------------------------------------------------------------
+
+export type PersonHit = { id: string; fullName: string; currentRole?: string };
+export type PersonSearchResult =
+  | { ok: true; people: PersonHit[] }
+  | { ok: false; error: string };
+
+const SearchPeopleInput = z.object({ q: z.string().trim().min(2) });
+
+/** People typeahead: name ilike, live people only, current employment folded
+ *  into a disambiguation line (title · company). */
+export async function searchPeople(raw: unknown): Promise<PersonSearchResult> {
+  await requireUser();
+  const parsed = SearchPeopleInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Type at least 2 characters." };
+
+  const { data, error } = await db
+    .from("person")
+    .select("id, full_name, employment(title, is_current, company(name))")
+    .is("erased_at", null)
+    .ilike("full_name", `%${parsed.data.q}%`)
+    .order("full_name")
+    .limit(8);
+  if (error) return { ok: false, error: "Search failed." };
+
+  const people: PersonHit[] = (data ?? []).map((p) => {
+    const current = p.employment.find((e) => e.is_current) ?? p.employment[0];
+    const parts = [current?.title, current?.company?.name].filter(Boolean);
+    return {
+      id: p.id,
+      fullName: p.full_name,
+      currentRole: parts.length ? parts.join(" · ") : undefined,
+    };
+  });
+  return { ok: true, people };
+}
+
+export type SearchAllResult =
+  | ({ ok: true } & SearchResults)
+  | { ok: false; error: string };
+
+const SearchAllInput = z.object({ q: z.string().trim().min(3) });
+
+/** Grouped global typeahead — same queries as the /search page (lib/search.ts),
+ *  capped at 5 per group for the header dropdown. */
+export async function searchAll(raw: unknown): Promise<SearchAllResult> {
+  await requireUser();
+  const parsed = SearchAllInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Type at least 3 characters." };
+  const results = await searchEntities(parsed.data.q, 5);
+  return { ok: true, ...results };
+}
+
+// ---------------------------------------------------------------------------
+// Q4 — archive / close jobs (mandate status)
+// ---------------------------------------------------------------------------
+
+const MandateStatusInput = z.object({
+  mandateId: z.string().uuid(),
+  status: z.enum(MANDATE_STATUSES),
+  confirmed: z.boolean().default(false),
+});
+
+export async function setMandateStatus(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = MandateStatusInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { mandateId, status, confirmed } = parsed.data;
+
+  const { data: current } = await db
+    .from("mandate")
+    .select("status, title")
+    .eq("id", mandateId)
+    .maybeSingle();
+  if (!current) return { ok: false, error: "Job not found." };
+
+  // Confirm-before-consequence (ADR-013): closing an open job removes it from
+  // the live pipeline. On-hold and reopening are reversible, low-stakes moves.
+  const closingOpenJob =
+    current.status === "open" && (status === "completed" || status === "cancelled");
+  if (closingOpenJob && !confirmed) {
+    return {
+      ok: false,
+      needsConfirm: `Set "${current.title}" to ${label(status)}? It leaves the open pipeline but stays linked to its company, deal and candidates, and can be reopened at any time.`,
+    };
+  }
+
+  const { error } = await db.from("mandate").update({ status }).eq("id", mandateId);
+  if (error) return { ok: false, error: "Update failed." };
+  revalidatePath("/jobs");
+  revalidatePath("/pipeline");
+  return { ok: true, id: mandateId };
+}
+
+// ---------------------------------------------------------------------------
+// Q5 — edit company (status, sectors, notes, add domain)
+// ---------------------------------------------------------------------------
+
+const CompanyUpdateInput = z.object({
+  companyId: z.string().uuid(),
+  status: z.enum(COMPANY_STATUSES),
+  sectors: csvToArray,
+  notes: z.string().trim().max(5000).default(""),
+  addDomain: optional(z.string().trim().toLowerCase()),
+});
+
+export async function updateCompany(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = CompanyUpdateInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const c = parsed.data;
+
+  const badSectors = c.sectors.filter((s) => !(SECTOR_TAXONOMY as readonly string[]).includes(s));
+  if (badSectors.length) {
+    return { ok: false, error: `Unknown sectors: ${badSectors.join(", ")}. Taxonomy: ${SECTOR_TAXONOMY.join(", ")}.` };
+  }
+
+  // Resolution before creation: a domain already claimed elsewhere would poison
+  // company resolution — reject before writing anything.
+  if (c.addDomain) {
+    const { data: existing } = await db
+      .from("company_domain")
+      .select("company_id")
+      .eq("domain", c.addDomain)
+      .limit(1);
+    if (existing?.length) {
+      return { ok: false, error: `Domain "${c.addDomain}" is already registered to a company.` };
+    }
+  }
+
+  const { error } = await db
+    .from("company")
+    .update({ status: c.status, sectors: c.sectors, notes: c.notes || null })
+    .eq("id", c.companyId);
+  if (error) return { ok: false, error: "Update failed." };
+
+  if (c.addDomain) {
+    const { error: domErr } = await db
+      .from("company_domain")
+      .insert({ company_id: c.companyId, domain: c.addDomain });
+    if (domErr) {
+      return { ok: false, error: "That domain could not be added — it may already be registered." };
+    }
+  }
+
+  revalidatePath(`/companies/${c.companyId}`);
+  revalidatePath("/companies");
+  return { ok: true, id: c.companyId };
 }

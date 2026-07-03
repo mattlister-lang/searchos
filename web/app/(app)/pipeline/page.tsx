@@ -15,17 +15,14 @@ export const dynamic = "force-dynamic";
 // Grouped by mandate, and every open mandate is shown — including ones with
 // no candidates yet. Absence of candidates is information (L-004).
 export default async function Pipeline() {
-  const [{ data: mandates }, { data: people }] = await Promise.all([
-    db
-      .from("mandate")
-      .select(
-        `id, title, status, company(id, name),
-         candidacy(id, stage, stage_changed_at, person(id, full_name))`,
-      )
-      .eq("status", "open")
-      .order("opened_at", { ascending: false }),
-    db.from("person").select("id, full_name").is("erased_at", null).order("full_name").limit(500),
-  ]);
+  const { data: mandates } = await db
+    .from("mandate")
+    .select(
+      `id, title, status, company(id, name),
+       candidacy(id, stage, stage_changed_at, person(id, full_name))`,
+    )
+    .eq("status", "open")
+    .order("opened_at", { ascending: false });
 
   const jobs = mandates ?? [];
   const mandateOptions = jobs.map((m) => ({ id: m.id, title: m.title }));
@@ -35,7 +32,7 @@ export default async function Pipeline() {
       <div className="flex items-center justify-between">
         <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
         <div className="flex gap-2">
-          <AddCandidacyDialog mandates={mandateOptions} people={people ?? []} />
+          <AddCandidacyDialog mandates={mandateOptions} />
           <NewMandateDialog />
         </div>
       </div>
