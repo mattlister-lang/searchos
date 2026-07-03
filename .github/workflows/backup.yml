@@ -1,0 +1,73 @@
+# Nightly pg_dump to off-platform storage (ADR-014: the database is the
+# business; this is the cheapest insurance in the whole system).
+#
+# Storage target: Cloudflare R2 (S3-compatible, zero egress fees). PENDING
+# CONFIRMATION — to use AWS S3 or Backblaze B2 instead, swap the endpoint URL
+# and credentials; the aws-cli commands are identical.
+#
+# Required repository secrets (Settings → Secrets → Actions):
+#   SUPABASE_DB_URL      — direct (non-pooler) Postgres connection string
+#   R2_ACCOUNT_ID        — Cloudflare account ID (forms the endpoint URL)
+#   R2_ACCESS_KEY_ID     — R2 API token key
+#   R2_SECRET_ACCESS_KEY — R2 API token secret
+#   R2_BUCKET            — private bucket name, e.g. searchos-backups
+
+name: nightly-backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC nightly
+  workflow_dispatch: {} # manual run for testing
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Install Postgres 17 client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          STAMP="$(date -u +%Y-%m-%d)"
+          pg_dump "$SUPABASE_DB_URL" --format=custom --no-owner --no-privileges \
+            --file="searchos-${STAMP}.dump"
+          gzip "searchos-${STAMP}.dump"
+          ls -lh "searchos-${STAMP}.dump.gz"
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          STAMP="$(date -u +%Y-%m-%d)"
+          aws s3 cp "searchos-${STAMP}.dump.gz" \
+            "s3://${R2_BUCKET}/nightly/searchos-${STAMP}.dump.gz" \
+            --endpoint-url "$R2_ENDPOINT"
+
+      - name: Prune to 30 daily copies
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          aws s3 ls "s3://${R2_BUCKET}/nightly/" --endpoint-url "$R2_ENDPOINT" \
+            | awk '{print $4}' | sort | head -n -30 \
+            | while read -r key; do
+                [ -n "$key" ] && aws s3 rm "s3://${R2_BUCKET}/nightly/${key}" \
+                  --endpoint-url "$R2_ENDPOINT"
+              done

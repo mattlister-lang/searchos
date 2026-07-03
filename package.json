@@ -1,0 +1,19 @@
+{
+  "name": "searchos",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "tsx scripts/seed.ts",
+    "import-csv": "tsx scripts/import-csv.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.6",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
