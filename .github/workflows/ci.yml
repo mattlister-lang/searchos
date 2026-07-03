@@ -1,0 +1,57 @@
+# CI — the mechanical half of ADR-023. No green, no merge.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  schema-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply migrations in order
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "== $f"
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+      - name: Run behaviour tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/tests/behaviour_tests.sql
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx next build
