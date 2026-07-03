@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const TYPES = ["call", "meeting", "email", "note", "linkedin_message"] as const;
+const TYPES = ["call", "meeting", "email", "note", "linkedin_message", "linkedin_post", "event"] as const;
 
 export function LogActivityDialog(props: {
   personId?: string;
