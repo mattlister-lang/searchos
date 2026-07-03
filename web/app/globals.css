@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Offtake Search brand: near-black canvas, electric lime accent (ADR-017).
+   Body face: Uncut Sans when its font files are added; system stack until then. */
+@theme {
+  --color-canvas: #0a0a0b;
+  --color-surface: #131316;
+  --color-raised: #1b1b1f;
+  --color-edge: #26262b;
+  --color-ink: #f5f5f4;
+  --color-ink2: #a1a1aa;
+  --color-muted: #71717a;
+  --color-lime: #c8ff00;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --font-sans: "Uncut Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+}
+
+body {
+  @apply bg-canvas text-ink font-sans antialiased;
+}

@@ -225,3 +225,13 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 7. **ISO 9001 (quality).** Served by the existing discipline: ADRs as controlled decisions, migrations as controlled changes, behaviour tests as verification records, weekly hygiene as management review. No certification pursued until there is an organisation to certify.
 
 **Consequences.** "Certifiable-by-construction" habits from day one at near-zero cost. When a prospective customer's security questionnaire arrives, the answers already exist in this file, the migration history, and the audit log.
+
+---
+
+## ADR-021: Phase 2 opened early — authenticated read-only UI on Vercel (amends ADR-017)
+
+**Context.** ADR-017 gated the UI on Phase 1's definition of done; ADR-018 deferred Phase 1 indefinitely, leaving the gate incoherent. Matt's direction (3 Jul 2026): deploy the UI on Vercel now. ADR-019 independently makes the UI part of the product surface.
+
+**Decision.** Phase 2 opens now. Stack as pinned in ADR-017: Next.js App Router on Vercel, Tailwind, shadcn/ui-style components in `web/`, Offtake dark theme. Strictly read-only against the views; every write continues through conversation/MCP. **Authentication is non-negotiable from the first deploy** (ADR-020): Supabase Auth magic-link sign-in, server-side email allowlist (initially `matt.lister@offtakesearch.com`), all data access server-side via the service-role key held only in Vercel server env — the browser never receives data credentials; RLS stays no-policies. Non-allowlisted sessions get 403 regardless of auth state.
+
+**Consequences.** The UI is a viewer, not a second write path — the zero-manual-entry principle survives. Vercel env needs `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_EMAILS`. Supabase email signups should be disabled in the dashboard as belt-and-braces; the allowlist alone already denies access.
