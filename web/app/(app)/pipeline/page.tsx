@@ -5,7 +5,8 @@ import {
   NewMandateDialog,
 } from "@/components/forms/pipeline-forms";
 import { db } from "@/lib/db";
-import { daysSince, stageLabel, STAGE_ORDER } from "@/lib/format";
+import { daysSince } from "@/lib/format";
+import { label, LIVE_STAGES } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -31,12 +32,12 @@ export default async function Pipeline() {
   ]);
   const rows = (data ?? []) as Row[];
 
-  const live = STAGE_ORDER.map((stage) => ({
+  const live = LIVE_STAGES.map((stage) => ({
     stage,
     cards: rows.filter((r) => r.stage === stage),
   }));
   const terminal = rows.filter(
-    (r) => !STAGE_ORDER.includes(r.stage as (typeof STAGE_ORDER)[number]),
+    (r) => !LIVE_STAGES.includes(r.stage as (typeof LIVE_STAGES)[number]),
   );
 
   return (
@@ -63,7 +64,7 @@ export default async function Pipeline() {
               <div key={col.stage} className="w-60 shrink-0">
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-sm font-medium capitalize">
-                    {stageLabel(col.stage)}
+                    {label(col.stage)}
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {col.cards.length}
@@ -113,7 +114,7 @@ export default async function Pipeline() {
           <CardContent className="flex flex-wrap gap-2">
             {terminal.map((c) => (
               <Badge key={c.candidacy_id} variant="outline" className="capitalize">
-                {c.full_name} — {stageLabel(c.stage)}
+                {c.full_name} — {label(c.stage)}
               </Badge>
             ))}
           </CardContent>

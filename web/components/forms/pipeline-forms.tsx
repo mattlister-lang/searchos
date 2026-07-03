@@ -3,154 +3,103 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { addCandidacy, createMandate, moveStage } from "@/lib/actions";
+import { CANDIDACY_STAGES, label } from "@/lib/domain";
+import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormDialog, Field, TextField } from "@/components/forms/form-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const ALL_STAGES = [
-  "identified", "approached", "screening", "shortlisted",
-  "client_interview", "offer", "placed", "rejected", "withdrawn",
-] as const;
-
 export function NewMandateDialog() {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const f = useActionForm(createMandate, {
     companyName: "", title: "", brief: "",
     seniority: "", location: "", salaryRange: "", skills: "",
   });
 
-  async function submit() {
-    setPending(true);
-    setError(null);
-    const res = await createMandate(form);
-    setPending(false);
-    if (res.ok) { setOpen(false); router.refresh(); }
-    else if ("error" in res) setError(res.error);
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm">New mandate</Button>} />
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>New mandate</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5">
-            <Label>Client company (must already exist)</Label>
-            <Input value={form.companyName}
-              onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Role title</Label>
-            <Input value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Brief</Label>
-            <Textarea rows={4} value={form.brief}
-              onChange={(e) => setForm({ ...form, brief: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Seniority</Label>
-              <Input placeholder="director" value={form.seniority}
-                onChange={(e) => setForm({ ...form, seniority: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Location</Label>
-              <Input value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label>Salary range</Label>
-              <Input placeholder="£120-150k" value={form.salaryRange}
-                onChange={(e) => setForm({ ...form, salaryRange: e.target.value })} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Skills (comma-sep)</Label>
-              <Input placeholder="ppa, origination" value={form.skills}
-                onChange={(e) => setForm({ ...form, skills: e.target.value })} />
-            </div>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending} onClick={submit}>
-            {pending ? "Creating…" : "Open mandate"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      trigger={<Button size="sm">New job</Button>}
+      title="New job (mandate)"
+      open={f.open} onOpenChange={f.onOpenChange}
+      error={f.error} pending={f.pending}
+      submitLabel="Open mandate" pendingLabel="Creating…"
+      onSubmit={() => f.submit()}
+    >
+      <TextField label="Client company (must already exist)" value={f.form.companyName}
+        onChange={f.setField("companyName")} />
+      <TextField label="Role title" value={f.form.title} onChange={f.setField("title")} />
+      <Field label="Brief">
+        <Textarea rows={4} value={f.form.brief} onChange={f.setField("brief")} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Seniority" placeholder="director" value={f.form.seniority}
+          onChange={f.setField("seniority")} />
+        <TextField label="Location" value={f.form.location}
+          onChange={f.setField("location")} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Salary range" placeholder="£120-150k" value={f.form.salaryRange}
+          onChange={f.setField("salaryRange")} />
+        <TextField label="Skills (comma-sep)" placeholder="ppa, origination"
+          value={f.form.skills} onChange={f.setField("skills")} />
+      </div>
+    </FormDialog>
   );
 }
 
 export function AddCandidacyDialog(props: {
   mandates: { id: string; title: string }[];
   people: { id: string; full_name: string }[];
+  fixedMandateId?: string;
 }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [personId, setPersonId] = useState("");
-  const [mandateId, setMandateId] = useState("");
-
-  async function submit() {
-    setPending(true);
-    setError(null);
-    const res = await addCandidacy({ personId, mandateId });
-    setPending(false);
-    if (res.ok) { setOpen(false); router.refresh(); }
-    else if ("error" in res) setError(res.error);
-  }
+  const f = useActionForm(addCandidacy, {
+    personId: "",
+    mandateId: props.fixedMandateId ?? "",
+  });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm">Add candidate to mandate</Button>} />
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>Add candidate to mandate</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-3">
-          <div className="grid gap-1.5">
-            <Label>Candidate</Label>
-            <Select value={personId} onValueChange={(v) => v && setPersonId(v)}>
-              <SelectTrigger><SelectValue placeholder="Pick a person" /></SelectTrigger>
-              <SelectContent>
-                {props.people.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-1.5">
-            <Label>Mandate</Label>
-            <Select value={mandateId} onValueChange={(v) => v && setMandateId(v)}>
-              <SelectTrigger><SelectValue placeholder="Pick a mandate" /></SelectTrigger>
-              <SelectContent>
-                {props.mandates.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button disabled={pending || !personId || !mandateId} onClick={submit}>
-            {pending ? "Adding…" : "Add at identified"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      trigger={<Button variant="outline" size="sm">Add candidate</Button>}
+      title="Add candidate to mandate"
+      open={f.open} onOpenChange={f.onOpenChange}
+      error={f.error} pending={f.pending}
+      submitLabel="Add at identified" pendingLabel="Adding…"
+      onSubmit={() => f.submit()}
+      submitDisabled={!f.form.personId || !f.form.mandateId}
+    >
+      <Field label="Candidate">
+        <Select value={f.form.personId} onValueChange={(v) => v && f.set("personId")(v)}>
+          <SelectTrigger><SelectValue placeholder="Pick a person" /></SelectTrigger>
+          <SelectContent>
+            {props.people.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      {!props.fixedMandateId && (
+        <Field label="Mandate">
+          <Select value={f.form.mandateId} onValueChange={(v) => v && f.set("mandateId")(v)}>
+            <SelectTrigger><SelectValue placeholder="Pick a mandate" /></SelectTrigger>
+            <SelectContent>
+              {props.mandates.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+    </FormDialog>
   );
 }
 
+/** Stage mover with confirm-before-consequence — stateful beyond a plain
+ *  form, so it composes the primitives rather than FormDialog. */
 export function MoveStageControl(props: { candidacyId: string; stage: string }) {
   const router = useRouter();
   const [confirm, setConfirm] = useState<{ message: string; stage: string } | null>(null);
@@ -172,9 +121,9 @@ export function MoveStageControl(props: { candidacyId: string; stage: string }) 
       <Select value={props.stage} onValueChange={(v) => v && move(v)}>
         <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
         <SelectContent>
-          {ALL_STAGES.map((s) => (
+          {CANDIDACY_STAGES.map((s) => (
             <SelectItem key={s} value={s} className="capitalize text-xs">
-              {s.replaceAll("_", " ")}
+              {label(s)}
             </SelectItem>
           ))}
         </SelectContent>

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { fmtMoney, stageLabel, STAGE_ORDER } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
+import { label, LIVE_STAGES } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -26,7 +27,7 @@ export default async function Reports() {
   ]);
 
   const mandates = [...new Set((funnel.data ?? []).map((f) => f.mandate))];
-  const maxCount = Math.max(1, ...(funnel.data ?? []).map((f) => f.candidates));
+  const maxCount = Math.max(1, ...(funnel.data ?? []).map((f) => f.candidates ?? 0));
 
   return (
     <div className="flex flex-col gap-6">
@@ -51,19 +52,19 @@ export default async function Reports() {
                   {m} <span className="text-muted-foreground">· {client}</span>
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  {STAGE_ORDER.map((stage) => {
+                  {LIVE_STAGES.map((stage) => {
                     const row = rows.find((r) => r.stage === stage);
                     const count = row?.candidates ?? 0;
                     return (
                       <div key={stage} className="flex items-center gap-3 text-sm">
                         <span className="w-32 shrink-0 capitalize text-muted-foreground">
-                          {stageLabel(stage)}
+                          {label(stage)}
                         </span>
                         <div className="flex h-2 flex-1 items-center">
                           <div
                             className="h-2 rounded-r-[4px] bg-primary"
                             style={{ width: `${(count / maxCount) * 100}%` }}
-                            title={`${stageLabel(stage)}: ${count}`}
+                            title={`${label(stage)}: ${count}`}
                           />
                         </div>
                         <span className="w-6 text-right tabular-nums">{count}</span>
@@ -99,7 +100,7 @@ export default async function Reports() {
                   <TableRow key={d.candidacy_id}>
                     <TableCell className="font-medium">{d.full_name}</TableCell>
                     <TableCell className="text-muted-foreground">{d.mandate}</TableCell>
-                    <TableCell className="capitalize">{stageLabel(d.stage)}</TableCell>
+                    <TableCell className="capitalize">{label(d.stage ?? "")}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {d.days_in_stage}{" "}
                       {d.stale && <Badge variant="outline">stale</Badge>}

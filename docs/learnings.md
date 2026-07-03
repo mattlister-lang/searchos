@@ -112,3 +112,12 @@ was mistaken for progress; the brief's ambition (billion-dollar-SaaS
 standard) demands design before build. → Non-trivial work gets a written
 plan naming layers, reuse, tests BEFORE code; the engineering contract is
 the enforcement. → engineering.md §9(4); ADR-023; this register.
+
+**L-015 · 2026-07-03 · Casts were hiding a dozen latent null bugs.**
+Typing the client against the generated schema surfaced ~10 sites where
+view columns (all nullable in typegen) were rendered or indexed without
+null-guards — previously masked by `as unknown as` casts. → Casting to
+hand-written interfaces asserts wishes, not facts. → Generated types are
+the only source of row shapes; view fields are always nullable and must be
+guarded at render. → database.types.ts + typed client; regeneration is in
+the DoD; TypeScript now fails the build on the next violation.

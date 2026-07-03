@@ -86,7 +86,7 @@ export default async function Dashboard() {
                   <TableRow key={i}>
                     <TableCell>
                       <Badge variant="outline">
-                        {REASON_LABEL[a.reason] ?? a.reason}
+                        {REASON_LABEL[a.reason ?? ""] ?? a.reason}
                       </Badge>
                     </TableCell>
                     <TableCell className="font-medium">{a.item}</TableCell>
@@ -153,22 +153,26 @@ export default async function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(pulse.data ?? []).map((p) => (
+              {(pulse.data ?? []).map((p) => {
+                const last = p.last_30d ?? 0;
+                const prior = p.prior_30d ?? 0;
+                return (
                 <TableRow key={p.company_id}>
                   <TableCell className="font-medium">{p.company}</TableCell>
-                  <TableCell className="text-right tabular-nums">{p.last_30d}</TableCell>
-                  <TableCell className="text-right tabular-nums">{p.prior_30d}</TableCell>
+                  <TableCell className="text-right tabular-nums">{last}</TableCell>
+                  <TableCell className="text-right tabular-nums">{prior}</TableCell>
                   <TableCell className="text-right">
-                    {p.last_30d > p.prior_30d ? (
+                    {last > prior ? (
                       <Badge>warming</Badge>
-                    ) : p.last_30d < p.prior_30d ? (
+                    ) : last < prior ? (
                       <Badge variant="destructive">cooling</Badge>
                     ) : (
                       <Badge variant="outline">steady</Badge>
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

@@ -1,4 +1,5 @@
 import { DealDialog, NewCompanyDialog } from "@/components/forms/deal-dialogs";
+import { OPEN_DEAL_STAGES } from "@/lib/domain";
 import { db } from "@/lib/db";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +15,6 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const OPEN_STAGES = ["lead", "qualified", "proposal", "negotiation"];
-
 export default async function Deals() {
   const [board, pulse] = await Promise.all([
     db.from("v_deal_board").select("*"),
@@ -25,8 +24,8 @@ export default async function Deals() {
     (pulse.data ?? []).map((p) => [p.company, p]),
   );
   const deals = board.data ?? [];
-  const open = deals.filter((d) => OPEN_STAGES.includes(d.stage));
-  const closed = deals.filter((d) => !OPEN_STAGES.includes(d.stage));
+  const open = deals.filter((d) => (OPEN_DEAL_STAGES as readonly string[]).includes(d.stage ?? ""));
+  const closed = deals.filter((d) => !(OPEN_DEAL_STAGES as readonly string[]).includes(d.stage ?? ""));
 
   return (
     <div className="flex flex-col gap-6">
@@ -83,7 +82,15 @@ export default async function Deals() {
                       {fmtDate(d.updated_at)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <DealDialog deal={d} />
+                      {d.deal_id && (
+                        <DealDialog deal={{
+                          deal_id: d.deal_id,
+                          name: d.name ?? "",
+                          stage: d.stage ?? "lead",
+                          value: d.value,
+                          next_step: d.next_step,
+                        }} />
+                      )}
                     </TableCell>
                   </TableRow>
                 );
