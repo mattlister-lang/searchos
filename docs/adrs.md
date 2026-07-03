@@ -235,3 +235,18 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 **Decision.** Phase 2 opens now. Stack as pinned in ADR-017: Next.js App Router on Vercel, Tailwind, shadcn/ui-style components in `web/`, Offtake dark theme. Strictly read-only against the views; every write continues through conversation/MCP. **Authentication is non-negotiable from the first deploy** (ADR-020): Supabase Auth magic-link sign-in, server-side email allowlist (initially `matt.lister@offtakesearch.com`), all data access server-side via the service-role key held only in Vercel server env — the browser never receives data credentials; RLS stays no-policies. Non-allowlisted sessions get 403 regardless of auth state.
 
 **Consequences.** The UI is a viewer, not a second write path — the zero-manual-entry principle survives. Vercel env needs `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_EMAILS`. Supabase email signups should be disabled in the dashboard as belt-and-braces; the allowlist alone already denies access.
+
+---
+
+## ADR-022: The UI writes — through the operator contract (supersedes ADR-021's read-only clause; amends ADR-003)
+
+**Context.** Lived verdict after first real use (3 Jul 2026): a read-only UI is not useful. Matt needs to enter data, read data, and get insight in one place. The product brief (`docs/product-brief.md`) requires full ATS/CRM interaction. ADR-003's "never through forms" bet is dead; what must survive is why it existed — data quality by construction.
+
+**Decision.** The web app becomes a write surface, but **every write goes through the operator contract (ADR-013), implemented as server actions** — never raw table forms:
+1. **Resolution before creation**: the add-person flow runs the ADR-006 chain (email → LinkedIn → trigram name+company) plus the suppression check server-side; ambiguous matches are shown to the operator to pick or consciously override. Same semantics as `scripts/lib/resolve.ts` and the MCP contract.
+2. **Confirmation before consequence**: stage regressions and moves to `placed` require an explicit confirm step stating what follows (statutory clock). Merges and erasure remain conversational-only — never one click away.
+3. **Nothing bypasses the audit trail** (automatic — 0005 triggers).
+4. All actions run server-side behind `requireUser()` (allowlist) with validated inputs; the browser still never holds a data credential.
+5. The server-action layer is the same domain logic the Phase 1 MCP server will expose — written once, shared later.
+
+**Consequences.** "Zero manual data entry" is retired as dogma and survives as economics: ingestion (Phase D) remains the goal for what *can* auto-log; the UI makes what can't auto-log take seconds. `docs/mcp-tools.md` remains the contract vocabulary. CV/document upload lands in Supabase Storage (private bucket) with rows in `document`.

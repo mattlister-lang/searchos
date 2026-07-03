@@ -1,4 +1,9 @@
 import Link from "next/link";
+import {
+  AddCandidacyDialog,
+  MoveStageControl,
+  NewMandateDialog,
+} from "@/components/forms/pipeline-forms";
 import { db } from "@/lib/db";
 import { daysSince, stageLabel, STAGE_ORDER } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +22,13 @@ type Row = {
 };
 
 export default async function Pipeline() {
-  const { data } = await db
-    .from("v_pipeline")
-    .select("candidacy_id, person_id, full_name, mandate, client, stage, stage_changed_at");
+  const [{ data }, { data: mandates }, { data: people }] = await Promise.all([
+    db
+      .from("v_pipeline")
+      .select("candidacy_id, person_id, full_name, mandate, client, stage, stage_changed_at"),
+    db.from("mandate").select("id, title").eq("status", "open").order("title"),
+    db.from("person").select("id, full_name").is("erased_at", null).order("full_name").limit(500),
+  ]);
   const rows = (data ?? []) as Row[];
 
   const live = STAGE_ORDER.map((stage) => ({
@@ -32,11 +41,20 @@ export default async function Pipeline() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-heading text-2xl font-semibold">Pipeline</h1>
+        <div className="flex gap-2">
+          <AddCandidacyDialog
+            mandates={mandates ?? []}
+            people={people ?? []}
+          />
+          <NewMandateDialog />
+        </div>
+      </div>
 
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No candidacies yet — the board fills as mandates open.
+          No candidacies yet — open a mandate, then add candidates to it.
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -70,6 +88,12 @@ export default async function Pipeline() {
                             {days}d in stage{" "}
                             {days > 14 && <Badge variant="outline">stale</Badge>}
                           </p>
+                          <div className="mt-2">
+                            <MoveStageControl
+                              candidacyId={c.candidacy_id}
+                              stage={c.stage}
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     );
