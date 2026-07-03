@@ -124,7 +124,13 @@ searchos/
 conversationally and via CSV, intelligence comes from Claude + the insight
 views (`v_next_actions`, `v_funnel`, `v_stage_dwell`, `v_activity_pulse`,
 `v_fee_income`), every mutation lands in `audit_log` (ADR-020). Migrations
-0001–0006 are live on the Pro project.
+0001–0009 are live on the Pro project (0008: standardised-CV storage, AI
+cost-guard scalar, Boolean people search; 0009: function search paths repinned
+to include `extensions` — the erase_person/pgcrypto prod fix, L-021/L-024).
+In-app AI is live per ADR-024: CV parsing runs on Haiku via `web/lib/ai.ts`
+(the only Claude API module) once `ANTHROPIC_API_KEY` is set in Vercel server
+env; every call is logged to `ai_usage_log` under the £20 alert / £50 hard
+stop.
 **Long term (ADR-019):** productise as deployment-per-firm SaaS — never
 shared-table tenancy, no `tenant_id` retrofit. ADR-016's gate stands: boringly
 reliable for one user for a full quarter first.
