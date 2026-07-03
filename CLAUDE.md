@@ -59,9 +59,10 @@ superseded by a numbered ADR. Do not improvise around them.**
   If the pipeline is ever switched on: Haiku for summarisation, Voyage
   voyage-3.5 (1024 dims) for embeddings, every call logged to `ai_usage_log`,
   £20/month alert, £50 hard stop.
-- UI (Phase 2 only, ADR-017): Next.js App Router + Tailwind + shadcn/ui in
-  `web/`, read-only against the views, Offtake brand dark theme. Do not scaffold
-  before Phase 1's definition of done is met.
+- UI (Phase 2, open per ADR-021): Next.js App Router + Tailwind + shadcn/ui
+  (preset b3XnzjREIK: base-vega, neutral, Public Sans/Geist) in `web/` on
+  Vercel. Strictly read-only against the views; magic-link auth + server-side
+  email allowlist; the service-role key lives only in Vercel server env.
 
 ## Repo layout
 
@@ -76,7 +77,7 @@ searchos/
 │   └── functions/           # edge functions (Phase 1 ingestion)
 ├── mcp-server/              # TypeScript MCP server (Phase 1)
 ├── scripts/                 # seed, CSV import, pg_dump backup
-└── web/                     # Phase 2 UI — empty until then
+└── web/                     # Phase 2 read-only UI (ADR-021)
 ```
 
 ## Phase status
