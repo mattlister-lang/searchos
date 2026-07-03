@@ -1,3 +1,4 @@
+import { DealDialog, NewCompanyDialog } from "@/components/forms/deal-dialogs";
 import { db } from "@/lib/db";
 import { fmtDate, fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +30,13 @@ export default async function Deals() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="font-heading text-2xl font-semibold">Deals</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-heading text-2xl font-semibold">Deals</h1>
+        <div className="flex gap-2">
+          <NewCompanyDialog />
+          <DealDialog />
+        </div>
+      </div>
 
       <Card>
         <CardHeader>
@@ -47,6 +54,7 @@ export default async function Deals() {
                 <TableHead>Next step</TableHead>
                 <TableHead className="text-right">Pulse</TableHead>
                 <TableHead className="text-right">Updated</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -73,6 +81,9 @@ export default async function Deals() {
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {fmtDate(d.updated_at)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DealDialog deal={d} />
                     </TableCell>
                   </TableRow>
                 );

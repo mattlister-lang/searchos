@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
+import { UploadCv } from "@/components/forms/upload-cv";
 import { db } from "@/lib/db";
 import { fmtDate, stageLabel } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -19,24 +21,30 @@ export default async function PersonPage({
 }) {
   const { id } = await params;
 
-  const [{ data: person }, { data: participation }] = await Promise.all([
-    db
-      .from("person")
-      .select(
-        `id, full_name, location, profile, linkedin_url, erased_at, created_at,
-         person_email(email, is_primary),
-         employment(title, is_current, start_date, end_date, company(name)),
-         candidacy(stage, stage_changed_at, placed_at, notes, mandate(title, company(name)))`,
-      )
-      .eq("id", id)
-      .maybeSingle(),
-    db
-      .from("activity_participant")
-      .select("role, activity(id, type, occurred_at, subject, summary)")
-      .eq("person_id", id)
-      .order("occurred_at", { ascending: false, referencedTable: "activity" })
-      .limit(25),
-  ]);
+  const [{ data: person }, { data: participation }, { data: documents }] =
+    await Promise.all([
+      db
+        .from("person")
+        .select(
+          `id, full_name, location, profile, linkedin_url, erased_at, created_at,
+           person_email(email, is_primary),
+           employment(title, is_current, start_date, end_date, company(name)),
+           candidacy(stage, stage_changed_at, placed_at, notes, mandate(title, company(name)))`,
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      db
+        .from("activity_participant")
+        .select("role, activity(id, type, occurred_at, subject, summary)")
+        .eq("person_id", id)
+        .order("occurred_at", { ascending: false, referencedTable: "activity" })
+        .limit(25),
+      db
+        .from("document")
+        .select("id, kind, filename, created_at, parsed_text")
+        .eq("person_id", id)
+        .order("created_at", { ascending: false }),
+    ]);
 
   if (!person) notFound();
 
@@ -48,9 +56,15 @@ export default async function PersonPage({
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="font-heading text-2xl font-semibold">
-          {person.full_name}
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="font-heading text-2xl font-semibold">
+            {person.full_name}
+          </h1>
+          <div className="flex shrink-0 gap-2">
+            <LogActivityDialog personId={person.id} contextLabel={person.full_name} />
+            <UploadCv personId={person.id} />
+          </div>
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {person.location ?? ""}
           {person.linkedin_url && (
@@ -126,6 +140,31 @@ export default async function PersonPage({
                   {fmtDate(c.stage_changed_at)}
                 </span>
               </span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Documents</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2">
+          {(documents ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No documents yet.</p>
+          )}
+          {(documents ?? []).map((d) => (
+            <div key={d.id} className="flex items-baseline justify-between text-sm">
+              <span>
+                <Badge variant="outline" className="mr-2 uppercase">{d.kind}</Badge>
+                <span className="font-medium">{d.filename}</span>
+                {d.parsed_text && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    text extracted · {Math.round(d.parsed_text.length / 1000)}k chars
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">{fmtDate(d.created_at)}</span>
             </div>
           ))}
         </CardContent>
