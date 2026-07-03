@@ -2,10 +2,10 @@
  * Phase 0 seed: Kraken deal + Amy Park, GeoPura + Theo Elmer, priority
  * targets, and Matt's own person record (CLAUDE.md Phase 0 checklist).
  *
- * Every value marked PLACEHOLDER below must be replaced with the real detail
- * before running against the live project. The script is idempotent — it
- * resolves before creating (ADR-013 rule 2) and can be re-run safely after
- * the placeholders are filled in.
+ * Confirmed values only — unknowns stay null rather than inventing data,
+ * and are filled in conversationally later. The script is idempotent — it
+ * resolves before creating (ADR-013 rule 2) and is safe to re-run after
+ * any edit.
  *
  * Embeddings are deliberately not set here; the Phase 1 pipeline backfills
  * them (ADR-005/007). No API calls happen in this script.
@@ -17,16 +17,16 @@ import { loadEnv, requireEnv } from './lib/env.ts';
 import { resolveCompany, resolvePerson } from './lib/resolve.ts';
 
 // ---------------------------------------------------------------------------
-// EDIT THIS BLOCK — placeholders are marked. Unknown values stay null rather
-// than inventing data.
+// EDIT THIS BLOCK — unknown values stay null rather than inventing data.
 // ---------------------------------------------------------------------------
 
+// Record-only data. Nothing in this system ever sends anything to anyone.
 const SEED = {
   operator: {
     fullName: 'Matt Lister',
-    email: 'matt@offtakesearch.com', // PLACEHOLDER — confirm the actual mailbox address
-    linkedinUrl: null as string | null, // PLACEHOLDER — Matt's LinkedIn profile URL
-    location: null as string | null, // PLACEHOLDER
+    email: 'matt.lister@offtakesearch.com',
+    linkedinUrl: null as string | null, // add when Matt supplies it
+    location: null as string | null,
     company: 'Offtake Search',
     title: 'Founder',
   },
@@ -39,56 +39,56 @@ const SEED = {
       notes: 'Own company — home of the operator record.',
     },
     {
-      name: 'Kraken', // PLACEHOLDER — confirm legal/trading name to use
+      name: 'Kraken',
       status: 'prospect',
-      sectors: ['flexibility', 'grid'], // PLACEHOLDER — confirm sector tags
-      domains: [] as string[], // PLACEHOLDER — confirm email domain(s) before adding; wrong domains poison matching
-      notes: 'PLACEHOLDER — Kraken deal context.',
+      sectors: ['flexibility', 'grid'],
+      domains: ['kraken.tech'], // confirmed by amy.park@kraken.tech
+      notes: null as string | null,
     },
     {
       name: 'GeoPura',
-      status: 'prospect', // PLACEHOLDER — confirm status (prospect/client)
+      status: 'prospect',
       sectors: ['hydrogen'],
-      domains: [] as string[], // PLACEHOLDER — confirm email domain(s)
-      notes: 'PLACEHOLDER — GeoPura context.',
+      domains: [] as string[], // add once confirmed; wrong domains poison matching
+      notes: null as string | null,
     },
   ],
   people: [
     {
       fullName: 'Amy Park',
-      email: null as string | null, // PLACEHOLDER — Amy's work email if known
-      linkedinUrl: null as string | null, // PLACEHOLDER
+      email: 'amy.park@kraken.tech',
+      linkedinUrl: null as string | null,
       company: 'Kraken',
-      title: null as string | null, // PLACEHOLDER
+      title: 'Talent Lead',
     },
     {
       fullName: 'Theo Elmer',
-      email: null as string | null, // PLACEHOLDER
-      linkedinUrl: null as string | null, // PLACEHOLDER
+      email: null as string | null, // add when confirmed
+      linkedinUrl: null as string | null,
       company: 'GeoPura',
-      title: null as string | null, // PLACEHOLDER
+      title: null as string | null,
     },
   ],
   deals: [
     {
-      name: 'Kraken retained search', // PLACEHOLDER — real deal name/role
+      name: 'Kraken retained search',
       company: 'Kraken',
       primaryContact: 'Amy Park',
-      stage: 'negotiation', // PLACEHOLDER — confirm current stage
-      value: null as number | null, // PLACEHOLDER
-      nextStep: 'PLACEHOLDER — next step in the negotiation',
+      stage: 'negotiation',
+      value: null as number | null,
+      nextStep: null as string | null,
     },
     {
-      name: 'GeoPura opportunity', // PLACEHOLDER
+      name: 'GeoPura opportunity',
       company: 'GeoPura',
       primaryContact: 'Theo Elmer',
-      stage: 'qualified', // PLACEHOLDER
+      stage: 'qualified', // best guess — correct conversationally if wrong
       value: null as number | null,
-      nextStep: 'PLACEHOLDER',
+      nextStep: null as string | null,
     },
   ],
-  // Priority target companies (CLAUDE.md Phase 0 checklist). PLACEHOLDER —
-  // replace with the real target list; empty entries are skipped.
+  // Priority target companies (CLAUDE.md Phase 0 checklist) — empty until
+  // Matt supplies the list; safe to fill and re-run.
   priorityTargets: [] as { name: string; sectors: string[]; notes?: string }[],
 };
 

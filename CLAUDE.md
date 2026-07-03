@@ -82,15 +82,18 @@ searchos/
 - [x] Migrations 0001 (core schema) and 0002 (operational hardening) written
       and verified against Postgres 16 + pgvector (behaviour tests for
       `merge_people`, `erase_person` both paths, `similar_people`, triggers)
-- [ ] `supabase link` + `supabase db push` against the Pro project
-- [ ] Seed: Kraken deal + Amy Park, GeoPura + Theo Elmer, priority targets,
-      Matt's own person record — `scripts/seed.ts` is ready; fill the
-      PLACEHOLDER block with real details, then `npm run seed`
-- [ ] Candidate pool CSV import (~120 records; resolution + suppression rules
-      apply to every row) — `scripts/import-csv.ts` is ready; dry-run first:
-      `npm run import-csv -- pool.csv`, then `--commit`
-- [ ] Nightly `pg_dump` backup via GitHub Actions cron to private storage
-      (ADR-014) — `.github/workflows/backup.yml` is ready; create the R2
+- [ ] `supabase db push` against the Pro project — blocked until the
+      `SUPABASE_DB_URL` environment variable injects (new session); deploy is
+      the first action of the next session
+- [ ] Seed: `scripts/seed.ts` is filled with confirmed data (Matt, Amy Park /
+      Talent Lead / kraken.tech, Theo Elmer name-only) — runs immediately
+      after deploy. Still to confirm conversationally: Matt's LinkedIn, Theo's
+      email, GeoPura domain + deal stage, priority-target list
+- [ ] Candidate pool CSV import — no CSV exists today; `scripts/import-csv.ts`
+      is ready for a future LinkedIn export (dry-run first:
+      `npm run import-csv -- pool.csv`, then `--commit`)
+- [ ] Nightly `pg_dump` backup (ADR-014) — deferred by Matt (3 Jul 2026);
+      `.github/workflows/backup.yml` is ready when wanted: create the R2
       bucket (or swap vendor) and add the repo secrets named in its header
 
 **Phase 1 gate:** a Granola access spike must pass before any pipeline
