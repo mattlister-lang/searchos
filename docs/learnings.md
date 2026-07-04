@@ -325,3 +325,52 @@ pre-existing value before wiring it. → PersonPicker gains `initialLabel`
 (seeds the text and the selected flag; typing still invalidates and
 re-searches), documented on the prop so the next edit form finds it
 (person-picker.tsx); this register.
+
+**L-030 · 2026-07-04 · Apollo documents its endpoints but truncates the response
+examples — build to the shape, defensively, and record the assumption.**
+R5's three new Apollo calls (organization job_postings, news_articles/search,
+people/match) all have reference pages that give the method, path and request
+params but cut off the response JSON ("Content truncated due to length"), so the
+exact field names (job `posted_at`/`last_seen_at`, news `source` vs `publisher`,
+person `email_status`) could not be verified before coding. → Apollo's public
+docs are request-complete but response-incomplete; guessing a field name and
+trusting it would fail silently (a renamed field parses as null → "nothing
+found", not an error, so the feature would look broken with no signal). → Model
+every Apollo response as an optional-everything zod subset (unknown keys
+stripped, missing keys degrade to empty, never throw) exactly as
+`enrichOrganization` already did, and write the assumed shapes down in the ship
+report so the next reader knows what to re-verify against a live 200. → apollo.ts
+schemas (JobPostingSchema, NewsArticleSchema, PersonMatchSchema) + the funnelled
+`apolloRequest` error ladder; this register.
+
+**L-031 · 2026-07-04 · A sentinel-detector matched a structural suffix real data
+can share — it would have silently rejected valid emails.**
+Apollo returns a placeholder like `email_not_unlocked@domain.com` when an email
+isn't revealed on the plan. My first locked-email guard was
+`/not_unlocked|email_not_found|domain\.com$/i` — the `domain\.com$` branch
+matches ANY real address at a company whose domain ends in "domain.com"
+(e.g. `jane@freedomain.com`), so a genuine found email would have been thrown
+away as "no verified email" with no trace. Caught on re-read before running. →
+Detecting a sentinel/placeholder value by a structural pattern (a suffix, a
+length) instead of by the sentinel's own distinguishing token invites
+false positives against legitimate data that happens to share the structure. →
+Match the placeholder by its unique marker only (`not_unlocked`), never by a
+shape real values can wear. → LOCKED_EMAIL narrowed + commented (apollo.ts);
+this register.
+
+**L-032 · 2026-07-04 · "Fetch writes nothing" gained one deliberate exception —
+caching a non-personal lookup key — so the invariant is now written down, not
+assumed.**
+`fetchCompanyEnrichment` was documented as "costs one credit and returns a
+preview — nothing is written". R5 makes it (and the new `resolveApolloOrgId`)
+cache Apollo's org id onto `company.apollo_org_id` on the fetch, so the openings
+/ news lookups don't re-spend an enrichment credit to re-resolve it (ADR-025 §4).
+That is a write on a nominally read-only preview path. → The org id is a
+non-personal lookup key, not fetched personal data, so it sits outside the
+"preview before write, confirm before consequence" rule that governs the notes
+append — but a future reader seeing a write in a "preview" action could
+reasonably think it a bug and "fix" it, re-spending credits. → The exception is
+allowed, bounded (`.is("apollo_org_id", null)` — set once, append never clobber)
+and commented at both write sites naming ADR-025 §4, so the boundary is explicit:
+cache non-personal keys freely; personal data still waits for confirm. → actions.ts
+(fetchCompanyEnrichment + resolveApolloOrgId comments); this register.

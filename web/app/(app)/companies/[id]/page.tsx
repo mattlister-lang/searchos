@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CompanyNews } from "@/components/company-news";
+import { CompanyOpenings } from "@/components/company-openings";
 import { EditCompanyDialog } from "@/components/forms/edit-company-dialog";
 import { EnrichCompanyDialog } from "@/components/forms/enrich-company-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
@@ -145,6 +147,10 @@ export default async function CompanyPage({
           ))}
         </CardContent>
       </Card>
+
+      <CompanyOpenings companyId={company.id} companyName={company.name} />
+
+      <CompanyNews companyId={company.id} />
 
       <Card>
         <CardHeader><CardTitle className="text-base">Recent activity</CardTitle></CardHeader>

@@ -279,3 +279,18 @@ Working name "SearchOS" is a placeholder. These ADRs are binding until supersede
 4. ADR-018's prohibition on **unattended pipeline** spend still stands — in-app calls are user-initiated actions, not cron jobs.
 
 **Consequences.** CV extraction at pennies per document under hard caps. The person record becomes the standardised CV: extraction populates employment history, skills, seniority, summary — one uniform layout on the person page regardless of source formatting, original file always attached. Requires Matt to add `ANTHROPIC_API_KEY` to Vercel env.
+
+---
+
+## ADR-025: Apollo is the enrichment backbone — one-way, into SearchOS
+
+**Context.** Matt reviewed the Apollo API surface (4 Jul 2026) and set the direction: "we enrich the data on my CRM from Apollo." Apollo exposes exactly the data the roadmap needs — organization enrichment (live), news article search, per-organization job postings, and people match with verified work emails — making it one vendor for enrichment, news, opportunity intelligence, and BD emails, with no scraping anywhere near ADR-009.
+
+**Decision.**
+1. **One-way flow: Apollo → SearchOS.** SearchOS remains the single system of record (ADR-001). Nothing is pushed to Apollo; Apollo's CRM surfaces (opportunities, sequences, tasks, contact stages) are not used. If that ever changes, it is a new ADR.
+2. **`web/lib/apollo.ts` is the only module that talks to Apollo** (mirror of ADR-024's single-module rule for Claude). Server-side only; `APOLLO_API_KEY` in Vercel server env; graceful inert behaviour without the key.
+3. **Credits are metered — ADR-015 discipline applies.** Every Apollo call is user-initiated (an explicit click); nothing unattended. Any future watch/refresh/digest (bulk enrich, scheduled postings checks) requires a further ADR naming its schedule, credit budget, and logging before it is built (same gate ADR-024 put on AI spend).
+4. **Preview before write, append never clobber.** Fetched data is shown to Matt and written only on confirm; notes appends carry a dated source header. The Apollo organization id may be cached on `company` (migration 0011) so repeat lookups don't re-spend enrichment credits.
+5. **Emails obey the existing safety rails.** A revealed email is checked against `suppression_list` before write (an erased person's address must never re-enter, ADR-008) and against `person_email` uniqueness (a claimed address belongs to exactly one person, ADR-006); the write is confirm-gated and audited. Lawful basis: B2B legitimate interest; rights honoured via `erase_person`.
+
+**Consequences.** Company news costs Apollo credits, not AI tokens. Opportunity intelligence ("this client just posted a role — here are your matching candidates") becomes an API call plus the existing Boolean search — no scrapers, no ADR-009 tension. The R5 build: job-postings check with pool matching, company news, find-email — all behind explicit clicks.

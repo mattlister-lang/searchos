@@ -7,6 +7,7 @@ import {
 } from "@/components/forms/candidacy-forms";
 import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
 import { AddFeedbackDialog, DeleteFeedbackButton } from "@/components/forms/feedback-forms";
+import { FindEmailDialog } from "@/components/forms/find-email-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { StandardisedCv } from "@/components/standardised-cv";
 import { UploadDocument } from "@/components/forms/upload-document";
@@ -122,12 +123,15 @@ export default async function PersonPage({
             </>
           )}
         </p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           {person.person_email.map((e) => (
             <Badge key={e.email} variant="outline">
               {e.email}
             </Badge>
           ))}
+          {!person.erased_at && (
+            <FindEmailDialog personId={person.id} personName={person.full_name} />
+          )}
         </div>
       </div>
 

@@ -3,7 +3,18 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { CompanyEnrichmentSchema, enrichOrganization, type CompanyEnrichment } from "@/lib/apollo";
+import {
+  CompanyEnrichmentSchema,
+  enrichOrganization,
+  fetchJobPostings,
+  fetchOrgNews,
+  matchPerson,
+  NewsArticleSchema,
+  type CompanyEnrichment,
+  type JobPosting,
+  type NewsArticle,
+  type PersonMatch,
+} from "@/lib/apollo";
 import { requireUser } from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
@@ -27,6 +38,7 @@ import {
 import { extractText } from "@/lib/extract-text";
 import {
   isGenericMailbox,
+  isSuppressed,
   normaliseLinkedinUrl,
   resolveCompanyId,
   resolvePerson,
@@ -1206,6 +1218,17 @@ export async function fetchCompanyEnrichment(raw: unknown): Promise<EnrichPrevie
 
   const result = await enrichOrganization(domain);
   if (!result.ok) return result;
+
+  // Cache Apollo's org id so the openings / news lookups (R5) don't re-spend an
+  // enrichment credit to resolve it (ADR-025 §4). Only when currently unset —
+  // append never clobber. Not personal data; a lookup key, so no confirm gate.
+  if (result.enrichment.id) {
+    await db
+      .from("company")
+      .update({ apollo_org_id: result.enrichment.id })
+      .eq("id", parsed.data.companyId)
+      .is("apollo_org_id", null);
+  }
   return { ok: true, enrichment: result.enrichment, domain };
 }
 
@@ -1250,4 +1273,217 @@ export async function applyCompanyEnrichment(raw: unknown): Promise<ActionResult
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/companies");
   return { ok: true, id: companyId };
+}
+
+// ---------------------------------------------------------------------------
+// R5 — Apollo intelligence on the company & person pages (ADR-025). Every call
+// below is a server action fired by an explicit operator click; nothing runs on
+// page load. Job postings and news are DISPLAY-ONLY (never persisted); the
+// found-email path is preview-then-confirm with the ADR-025 §5 safety rails.
+// ---------------------------------------------------------------------------
+
+/** Resolve a company's Apollo org id: cached id first (free), else one
+ *  enrichment lookup by the first domain, caching the id so the next openings /
+ *  news click is free (ADR-025 §4). */
+async function resolveApolloOrgId(
+  companyId: string,
+): Promise<{ ok: true; orgId: string } | { ok: false; error: string }> {
+  const { data: company } = await db
+    .from("company")
+    .select("apollo_org_id")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (!company) return { ok: false, error: "Company not found." };
+  if (company.apollo_org_id) return { ok: true, orgId: company.apollo_org_id };
+
+  const { data: domains } = await db
+    .from("company_domain")
+    .select("domain")
+    .eq("company_id", companyId)
+    .limit(1);
+  const domain = domains?.[0]?.domain;
+  if (!domain) {
+    return { ok: false, error: "Apollo looks companies up by domain — add the company's domain first (Edit company)." };
+  }
+
+  const result = await enrichOrganization(domain);
+  if (!result.ok) return result;
+  const orgId = result.enrichment.id;
+  if (!orgId) return { ok: false, error: `Apollo has no organisation id for "${domain}".` };
+
+  await db
+    .from("company")
+    .update({ apollo_org_id: orgId })
+    .eq("id", companyId)
+    .is("apollo_org_id", null);
+  return { ok: true, orgId };
+}
+
+const CompanyApolloInput = z.object({ companyId: z.string().uuid() });
+
+// F1 — Openings (job postings). Display only, not persisted.
+export type OpeningsResult =
+  | { ok: true; postings: JobPosting[] }
+  | { ok: false; error: string };
+
+export async function fetchCompanyOpenings(raw: unknown): Promise<OpeningsResult> {
+  await requireUser();
+  const parsed = CompanyApolloInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const org = await resolveApolloOrgId(parsed.data.companyId);
+  if (!org.ok) return org;
+  return fetchJobPostings(org.orgId);
+}
+
+// F2 — Company news. Fetch is display only; append is preview-then-confirm.
+export type CompanyNewsResult =
+  | { ok: true; articles: NewsArticle[] }
+  | { ok: false; error: string };
+
+export async function fetchCompanyNews(raw: unknown): Promise<CompanyNewsResult> {
+  await requireUser();
+  const parsed = CompanyApolloInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const org = await resolveApolloOrgId(parsed.data.companyId);
+  if (!org.ok) return org;
+  return fetchOrgNews(org.orgId);
+}
+
+const NewsAppendInput = z.object({
+  companyId: z.string().uuid(),
+  articles: z.array(NewsArticleSchema).min(1).max(20),
+});
+
+/** Append a dated news digest to the company notes — append never clobber,
+ *  inside the 5000-char budget the edit form enforces, trimming the news block
+ *  not Matt's own notes (same discipline as applyCompanyEnrichment). */
+export async function appendCompanyNews(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = NewsAppendInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { companyId, articles } = parsed.data;
+
+  const { data: company } = await db
+    .from("company")
+    .select("notes")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (!company) return { ok: false, error: "Company not found." };
+
+  const items = articles
+    .filter((a) => a.title)
+    .slice(0, 8)
+    .map((a) => {
+      const outlet = a.source ?? a.publisher;
+      const when = a.published_at ? a.published_at.slice(0, 10) : null;
+      const meta = [outlet, when].filter(Boolean).join(", ");
+      const head = `• ${a.title}${meta ? ` (${meta})` : ""}`;
+      return a.url ? `${head}\n  ${a.url}` : head;
+    });
+  if (items.length === 0) return { ok: false, error: "No news worth saving." };
+
+  const block = [`— Apollo news (${new Date().toISOString().slice(0, 10)}) —`, ...items].join("\n");
+  const existing = company.notes ? `${company.notes}\n\n` : "";
+  const notes = (existing + block).slice(0, 5000);
+
+  const { error } = await db.from("company").update({ notes }).eq("id", companyId);
+  if (error) return { ok: false, error: "Update failed." };
+
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/companies");
+  return { ok: true, id: companyId };
+}
+
+// F3 — Find email on the person page. Preview (findPersonEmail) spends one
+// Apollo credit and shows the revealed email + status; nothing is written.
+// addFoundEmail runs on confirm behind BOTH ADR-025 §5 rails: suppression (an
+// erased address can never re-enter, ADR-008) and person_email uniqueness (an
+// address belongs to exactly one person, ADR-006).
+export type FindEmailResult =
+  | { ok: true; match: PersonMatch }
+  | { ok: false; error: string };
+
+const FindEmailInput = z.object({ personId: z.string().uuid() });
+
+export async function findPersonEmail(raw: unknown): Promise<FindEmailResult> {
+  await requireUser();
+  const parsed = FindEmailInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const { data: person } = await db
+    .from("person")
+    .select(
+      "id, full_name, erased_at, employment(is_current, company(name, company_domain(domain)))",
+    )
+    .eq("id", parsed.data.personId)
+    .maybeSingle();
+  if (!person) return { ok: false, error: "Person not found." };
+  if (person.erased_at) return { ok: false, error: "This record was erased — no lookups." };
+
+  const current = person.employment.find((e) => e.is_current);
+  if (!current?.company) {
+    return { ok: false, error: "No current employer on file — add their current company first, then retry." };
+  }
+  const domain = current.company.company_domain?.[0]?.domain;
+  if (!domain) {
+    return {
+      ok: false,
+      error: `${current.company.name} has no domain on file — add it on the company page so Apollo can match by employer.`,
+    };
+  }
+
+  return matchPerson({ name: person.full_name, domain });
+}
+
+const AddFoundEmailInput = z.object({
+  personId: z.string().uuid(),
+  email: z.string().trim().toLowerCase().email(),
+});
+
+export async function addFoundEmail(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = AddFoundEmailInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { personId, email } = parsed.data;
+
+  // Same pipeline rule as createPerson: a generic mailbox never becomes a
+  // person email (a shared address poisons resolution forever).
+  if (isGenericMailbox(email)) {
+    return { ok: false, error: "Generic mailboxes never become person emails — link activity to the company instead." };
+  }
+
+  // Rail 1 (ADR-025 §5 / ADR-008): an erased person's address must never
+  // re-enter. Hashed + checked exactly as erase_person writes the list.
+  if (await isSuppressed(email)) {
+    return { ok: false, error: "This email is on the suppression list — it belonged to an erased record and can never be re-added (ADR-008)." };
+  }
+
+  // Rail 2 (ADR-006): person_email is globally unique — an address belongs to
+  // exactly one person. If already claimed, refuse and name the conflict.
+  const { data: existing } = await db
+    .from("person_email")
+    .select("person_id")
+    .eq("email", email)
+    .limit(1);
+  if (existing?.length) {
+    return existing[0].person_id === personId
+      ? { ok: false, error: "This person already has that email." }
+      : { ok: false, error: "That email already belongs to another record — resolve before adding." };
+  }
+
+  // is_primary only if the person has no primary yet.
+  const { data: primaries } = await db
+    .from("person_email")
+    .select("id")
+    .eq("person_id", personId)
+    .eq("is_primary", true)
+    .limit(1);
+
+  const { error } = await db
+    .from("person_email")
+    .insert({ person_id: personId, email, is_primary: !primaries?.length });
+  if (error) return { ok: false, error: "Insert failed — the address may already be in use." };
+
+  revalidatePath(`/people/${personId}`);
+  return { ok: true, id: personId };
 }

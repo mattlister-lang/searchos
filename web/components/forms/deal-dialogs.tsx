@@ -36,11 +36,17 @@ export function DealDialog(props: {
     value: number | null;
     next_step: string | null;
   };
+  /** Seed a NEW deal's company + name (e.g. from a company page or an Apollo
+   *  job posting). Ignored when editing. The company must already exist —
+   *  upsertDeal resolves it by name, so pass the exact company name. */
+  prefill?: { companyName?: string; name?: string };
+  /** Override the default trigger button (label/variant varies by context). */
+  trigger?: React.ReactElement;
 }) {
   const editing = !!props.deal;
   const f = useActionForm(upsertDeal, {
-    companyName: "",
-    name: props.deal?.name ?? "",
+    companyName: props.prefill?.companyName ?? "",
+    name: props.deal?.name ?? props.prefill?.name ?? "",
     stage: props.deal?.stage ?? "lead",
     value: props.deal?.value?.toString() ?? "",
     nextStep: props.deal?.next_step ?? "",
@@ -48,9 +54,9 @@ export function DealDialog(props: {
 
   return (
     <FormDialog
-      trigger={editing
+      trigger={props.trigger ?? (editing
         ? <Button variant="ghost" size="sm">Edit</Button>
-        : <Button size="sm">New deal</Button>}
+        : <Button size="sm">New deal</Button>)}
       title={editing ? `Edit — ${props.deal!.name}` : "New deal"}
       open={f.open} onOpenChange={f.onOpenChange}
       error={f.error} pending={f.pending}
