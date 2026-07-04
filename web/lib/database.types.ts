@@ -479,6 +479,7 @@ export type Database = {
       }
       company: {
         Row: {
+          apollo_org_id: string | null
           created_at: string
           embedding: string | null
           id: string
@@ -489,6 +490,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          apollo_org_id?: string | null
           created_at?: string
           embedding?: string | null
           id?: string
@@ -499,6 +501,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          apollo_org_id?: string | null
           created_at?: string
           embedding?: string | null
           id?: string

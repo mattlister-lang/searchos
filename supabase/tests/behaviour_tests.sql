@@ -928,5 +928,24 @@ begin
   raise notice 'TEST 20 OK: redacted erase purges feedback+interview (data+audit), keeps invoice lineage+audit';
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- TEST 21 (0011): company.apollo_org_id round-trips and defaults null.
+-- ---------------------------------------------------------------------------
+do $$
+declare v text;
+begin
+  insert into company (id, name) values ('00000000-0000-0000-0000-00000000c0a1', 'Apollo Cache Test Co');
+  select apollo_org_id into v from company where id = '00000000-0000-0000-0000-00000000c0a1';
+  if v is not null then
+    raise exception 'TEST 21 FAILED: apollo_org_id should default null';
+  end if;
+  update company set apollo_org_id = '5f1b2c3d4e' where id = '00000000-0000-0000-0000-00000000c0a1';
+  select apollo_org_id into v from company where id = '00000000-0000-0000-0000-00000000c0a1';
+  if v <> '5f1b2c3d4e' then
+    raise exception 'TEST 21 FAILED: apollo_org_id did not round-trip';
+  end if;
+  raise notice 'TEST 21 OK: company.apollo_org_id defaults null and round-trips';
+end $$;
+
 rollback;
 \echo ALL BEHAVIOUR TESTS PASSED

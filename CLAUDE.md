@@ -4,7 +4,7 @@ Recruitment/exec search CRM+ATS for Offtake Search (Hy Works Ltd). Single-tenant
 MCP-first, zero manual data entry. Supabase Postgres is a deliberately boring
 system of record; all intelligence lives in the layer around the database, never in it.
 
-**Read `docs/adrs.md` before any non-trivial work. ADRs 001–024 are binding until
+**Read `docs/adrs.md` before any non-trivial work. ADRs 001–025 are binding until
 superseded by a numbered ADR. Do not improvise around them.**
 **Equally binding (ADR-023): `docs/engineering.md` (the engineering contract)
 and `docs/learnings.md` (the learning register — the scar tissue). Read all

@@ -145,3 +145,40 @@ export function label(value: string): string {
 export function toOptions(values: readonly string[]): { value: string; label: string }[] {
   return values.map((v) => ({ value: v, label: label(v) }));
 }
+
+/**
+ * Seniority/grade modifiers and function words that carry no signal for
+ * matching candidates to a job title. Everything else in a title is a keyword.
+ */
+const TITLE_STOPWORDS = new Set([
+  "senior", "junior", "snr", "jnr", "mid", "principal", "chief", "trainee",
+  "graduate", "intern", "the", "and", "for", "our", "with", "new", "role",
+  "of", "to", "in", "at", "an",
+]);
+
+/**
+ * Build a websearch Boolean query from a job-posting title, for the people
+ * search (`/people?q=` → search_people_boolean, which speaks websearch syntax:
+ * OR between terms, "quoted phrases", -exclude). Significant words are OR'd so
+ * the search casts a wide, ranked net over name/skills/CV text; a term is
+ * quoted only if it is multi-word. Pure and boring so it stays testable and
+ * client-safe (built where the "Find matches" Link is rendered). Falls back to
+ * the cleaned title when a title is all stopwords/too short to yield keywords.
+ */
+export function booleanQueryFromTitle(title: string): string {
+  const cleaned = title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const word of cleaned.split(" ")) {
+    if (word.length < 3 || TITLE_STOPWORDS.has(word) || seen.has(word)) continue;
+    seen.add(word);
+    terms.push(word.includes(" ") ? `"${word}"` : word);
+  }
+  if (terms.length === 0) return cleaned;
+  return terms.join(" OR ");
+}
