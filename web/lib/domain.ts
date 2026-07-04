@@ -49,6 +49,10 @@ export const INTERVIEW_OUTCOMES = [
   "scheduled", "passed", "failed", "cancelled", "no_show",
 ] as const;
 
+/** Who candidacy feedback came from (F1, migration 0010). Mirrors the
+ *  feedback_source DB enum. */
+export const FEEDBACK_SOURCES = ["client", "consultant"] as const;
+
 export const SENIORITY_LEVELS = [
   "junior", "mid", "senior", "manager", "head", "director", "vp", "c_suite",
 ] as const;

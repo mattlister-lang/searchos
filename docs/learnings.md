@@ -264,3 +264,64 @@ FormData → `createPersonFromCv`. Dialogs never grow a second state machine
 because the payload shape changed. → add-person-dialog.tsx `submitAction`;
 engineering.md §3 stands unamended (the machine already allowed this); this
 register.
+
+**L-026 · 2026-07-04 · One new person-referencing FK trips L-009 and L-010 at once.**
+R4/F2 adds `mandate.hiring_manager_id` (a person link). A person FK is not just
+a column: `merge_people` had to repoint it (else merging the hiring manager
+into their canonical record orphans the reference — L-009), AND `erase_person`
+had to purge audit rows that name the erased person through it (the hard-delete
+path's on-delete-set-null fires a mandate UPDATE whose audit row carries the
+erased id under `hiring_manager_id`; the redacted path keeps the person so we
+null it explicitly like `deal.primary_contact_id` — L-010). Missing either is a
+silent defect the happy path never shows. → A person-referencing FK inherits
+BOTH the merge-repoint and the audit-purge contracts; enumerate both whenever
+one is added. → Both closed in 0010 (merge repoint line; erase adds
+`hiring_manager_id` to the audit purge and the redacted-path null); behaviour
+tests 18 (merge) and 19 (erase). This register + the migration header.
+
+**L-027 · 2026-07-04 · Audit rows on a child of candidacy key on candidacy_id, not person_id — the person-keyed erase purge never reached them (a latent leak since 0006).**
+R4/F1 adds `candidacy_feedback` (person-derived free text). Verifying its
+erasure path per the task surfaced that its audit rows carry `candidacy_id`,
+not `person_id`, so `erase_person`'s person-keyed purge could not match them —
+and `interview` (0006) had the *identical* shape and was already leaking:
+erasing a person left interview-audit rows containing `feedback`/`notes` (I
+reproduced it — two rows survived, one reading "CANDIDATE WAS LIGHT ON GRID").
+This is L-010 a third way; 0006 shipped it uncaught because no test erased a
+person who had interviews. → A new table is only "audit-safe under erasure" if
+the purge can *reach* its rows; when the table has no `person_id`, the purge
+must match through whatever id it does carry (here: the erased person's
+candidacy ids). → 0010 captures the person's candidacy ids and purges
+`candidacy_feedback` + `interview` audit rows by them, table-scoped so the
+statutory `invoice` audit (also candidacy-keyed, but non-identifying fee
+lineage) is preserved; the redacted path also deletes the live feedback/
+interview on the surviving placed candidacy (identifying detail, not lineage —
+same rationale as nulling `notes`). Tests 19 (never-placed) and 20 (redacted,
+incl. the invoice-survives assertion) lock it. This register + migration header.
+
+**L-028 · 2026-07-04 · "One entry, two views" is a storage-shape decision, not a UI one — hang it off the join table.**
+R4/F1 needed candidacy feedback visible on BOTH the job page and the person
+page as a single record. The tempting reach was to extend `activity` (it has
+`mandate_id`), but activity is event-shaped (typed, `source`/`source_ref`
+idempotent, participant-linked) and carries no candidacy link — it would have
+needed a new type and a new column, then UI glue to show it in two places. →
+`candidacy` already joins person × mandate, so a plain child table of candidacy
+surfaces on both pages for free (`mandate → candidacy → feedback` and
+`person → candidacy → feedback`) — the dual view is structural, not rendered
+twice. → Prefer the boring child-of-the-join-table over widening an
+event-shaped table (ADR-002); `candidacy_feedback` (0010), behaviour test 16
+proves both paths resolve the same row. This register.
+
+**L-029 · 2026-07-04 · A shared input primitive built for create flows lies in edit flows unless it can render a pre-existing selection.**
+R4/F2's Edit-brief dialog is the first EDIT-form use of PersonPicker (every
+prior use — add candidacy, log activity — was create-only). Wired naively, a
+mandate with a hiring manager already set would open the dialog to an EMPTY
+search box: the UI silently misrepresents saved state, and because the brief
+dialog submits full state by design (empty = clear), saving the "unchanged"
+form would have wiped the hiring-manager link — a data-loss bug wearing a
+blank field. → The primitive's state model only knew "nothing selected yet";
+edit flows also need "selected before the dialog opened". → When a shared
+input is first reused in an edit context, check it can represent the
+pre-existing value before wiring it. → PersonPicker gains `initialLabel`
+(seeds the text and the selected flag; typing still invalidates and
+re-searches), documented on the prop so the next edit form finds it
+(person-picker.tsx); this register.

@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
-import { daysSince, fmtDate } from "@/lib/format";
+import { label } from "@/lib/domain";
+import { fmtDate } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -25,13 +27,14 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 export default async function Dashboard() {
-  const [people, deals, candidacies, actions, pulse, interviews] = await Promise.all([
+  const [people, deals, candidacies, actions, pulse, interviews, stale] = await Promise.all([
     db.from("person").select("id", { count: "exact", head: true }).is("erased_at", null),
     db.from("deal").select("id", { count: "exact", head: true }).not("stage", "in", '("won","lost")'),
     db.from("candidacy").select("id", { count: "exact", head: true }).not("stage", "in", '("placed","rejected","withdrawn")'),
     db.from("v_next_actions").select("*"),
     db.from("v_activity_pulse").select("*").order("last_30d", { ascending: false }),
     db.from("v_upcoming_interviews").select("*").limit(10),
+    db.from("v_stale_candidacies").select("*").limit(15),
   ]);
 
   const stats = [
@@ -95,6 +98,72 @@ export default async function Dashboard() {
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">
                       {fmtDate(a.since)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Chase list — candidates sitting in stage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!stale.data?.length ? (
+            <p className="text-sm text-muted-foreground">
+              No one has been in a stage for more than a week. Momentum intact.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Candidate</TableHead>
+                  <TableHead>Job</TableHead>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Stage</TableHead>
+                  <TableHead className="text-right">Days</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stale.data.map((s) => (
+                  <TableRow key={s.candidacy_id ?? `${s.person_id}-${s.mandate_id}`}>
+                    <TableCell className="font-medium">
+                      {s.person_id ? (
+                        <Link href={`/people/${s.person_id}`} className="hover:underline">
+                          {s.person_name ?? "—"}
+                        </Link>
+                      ) : (
+                        s.person_name ?? "—"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {s.mandate_id ? (
+                        <Link href={`/jobs/${s.mandate_id}`} className="hover:underline">
+                          {s.mandate ?? "—"}
+                        </Link>
+                      ) : (
+                        s.mandate ?? "—"
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {s.company_id ? (
+                        <Link href={`/companies/${s.company_id}`} className="hover:underline">
+                          {s.client ?? "—"}
+                        </Link>
+                      ) : (
+                        s.client ?? "—"
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {s.stage ? label(s.stage) : "—"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {s.days_in_stage ?? "—"}
                     </TableCell>
                   </TableRow>
                 ))}

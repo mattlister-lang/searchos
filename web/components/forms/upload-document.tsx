@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { uploadDocument } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 
-export function UploadCv(props: { personId: string }) {
+/**
+ * The one hidden-file-input upload control (engineering.md §3 — was UploadCv;
+ * R4/F3 generalised it when the JD upload became its second use). Target is a
+ * person (CVs) or a mandate (JD/spec); the uploadDocument action routes the
+ * file to the right Storage prefix and document row.
+ */
+export function UploadDocument(props: {
+  target: { personId: string } | { mandateId: string };
+  kind: "cv" | "spec" | "terms" | "other";
+  label: string;
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
@@ -18,8 +28,9 @@ export function UploadCv(props: { personId: string }) {
     setError(null);
     const fd = new FormData();
     fd.set("file", file);
-    fd.set("personId", props.personId);
-    fd.set("kind", "cv");
+    if ("personId" in props.target) fd.set("personId", props.target.personId);
+    else fd.set("mandateId", props.target.mandateId);
+    fd.set("kind", props.kind);
     const res = await uploadDocument(fd);
     setPending(false);
     if (res.ok) router.refresh();
@@ -32,7 +43,7 @@ export function UploadCv(props: { personId: string }) {
       <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.txt" hidden onChange={onChange} />
       <Button variant="outline" size="sm" disabled={pending}
         onClick={() => inputRef.current?.click()}>
-        {pending ? "Uploading…" : "Upload CV"}
+        {pending ? "Uploading…" : props.label}
       </Button>
       {error && <span className="text-xs text-destructive">{error}</span>}
     </span>
