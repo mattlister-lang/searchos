@@ -14,12 +14,14 @@ export function PersonPicker(props: {
   value: string;
   onChange: (personId: string) => void;
   placeholder?: string;
+  /** Display name for a pre-selected `value` (edit forms) — typing replaces it. */
+  initialLabel?: string;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(props.initialLabel ?? "");
   const [results, setResults] = useState<PersonHit[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const selectedRef = useRef(false);
+  const selectedRef = useRef(Boolean(props.initialLabel));
   const debounced = useDebouncedValue(text, 250);
 
   useEffect(() => {

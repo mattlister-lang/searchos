@@ -15,6 +15,7 @@ import {
   clampTags,
   COMPANY_STATUSES,
   DEAL_STAGES,
+  FEEDBACK_SOURCES,
   INTERVIEW_KINDS,
   INTERVIEW_OUTCOMES,
   label,
@@ -442,18 +443,26 @@ export async function moveStage(raw: unknown): Promise<ActionResult> {
 // Documents (CV upload → private Storage bucket + document row)
 // ---------------------------------------------------------------------------
 
+/** Where a document hangs: a person (CVs) or a mandate (JD/spec — F3). */
+type DocumentTarget = { personId: string } | { mandateId: string };
+
 /** The one storage-upload + document-row path, shared by uploadDocument and
  *  the CV-first flow (never a second copy). Extracts text at upload
  *  (document.parsed_text) and persists the standardised-CV JSON when the
- *  caller has one (document.parsed_cv, 0008). */
+ *  caller has one (document.parsed_cv, 0008). R4/F3 generalises the target:
+ *  person documents live under person/<id>/, mandate documents (JD specs)
+ *  under mandate/<id>/ with person_id null. */
 async function persistDocument(
   file: File,
-  personId: string,
+  target: DocumentTarget,
   kind: Database["public"]["Enums"]["document_kind"],
   parsedCv: ParsedCv | null,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
-  const path = `person/${personId}/${Date.now()}-${safeName}`;
+  const prefix = "personId" in target
+    ? `person/${target.personId}`
+    : `mandate/${target.mandateId}`;
+  const path = `${prefix}/${Date.now()}-${safeName}`;
   const { error: upErr } = await db.storage
     .from("documents")
     .upload(path, file, { contentType: file.type || "application/octet-stream" });
@@ -470,7 +479,8 @@ async function persistDocument(
       mime_type: file.type || null,
       parsed_text: parsedText,
       parsed_cv: parsedCv,
-      person_id: personId,
+      person_id: "personId" in target ? target.personId : null,
+      mandate_id: "mandateId" in target ? target.mandateId : null,
     })
     .select("id")
     .single();
@@ -482,19 +492,59 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   await requireUser();
   const file = formData.get("file") as File | null;
   const personId = formData.get("personId") as string | null;
-  const kind = (formData.get("kind") as string | null) ?? "cv";
+  const mandateId = formData.get("mandateId") as string | null;
+  const kind = (formData.get("kind") as string | null) ?? (mandateId ? "spec" : "cv");
   if (!file || file.size === 0) return { ok: false, error: "No file." };
-  if (!personId || !z.string().uuid().safeParse(personId).success) {
-    return { ok: false, error: "Invalid person." };
+  // Exactly one owner — a document is a person's or a mandate's, never both.
+  if ((personId ? 1 : 0) + (mandateId ? 1 : 0) !== 1) {
+    return { ok: false, error: "Invalid document target." };
+  }
+  const targetId = personId ?? mandateId;
+  if (!targetId || !z.string().uuid().safeParse(targetId).success) {
+    return { ok: false, error: personId ? "Invalid person." : "Invalid job." };
   }
   if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
   if (!["cv", "spec", "terms", "other"].includes(kind)) return { ok: false, error: "Invalid kind." };
   const docKind = kind as Database["public"]["Enums"]["document_kind"];
 
-  const stored = await persistDocument(file, personId, docKind, null);
+  const stored = await persistDocument(
+    file,
+    personId ? { personId } : { mandateId: targetId },
+    docKind,
+    null,
+  );
   if (!stored.ok) return stored;
-  revalidatePath(`/people/${personId}`);
+  revalidatePath(personId ? `/people/${targetId}` : `/jobs/${targetId}`);
   return { ok: true, id: stored.id };
+}
+
+export type DocumentUrlResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
+const DocumentUrlInput = z.object({ documentId: z.string().uuid() });
+
+/** F3: one-click (re)download. Private bucket, so the browser never gets a
+ *  durable URL — a short-lived signed URL is minted per click, with
+ *  content-disposition set to the original filename so the file arrives
+ *  ready to forward. */
+export async function getDocumentUrl(raw: unknown): Promise<DocumentUrlResult> {
+  await requireUser();
+  const parsed = DocumentUrlInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+
+  const { data: doc } = await db
+    .from("document")
+    .select("storage_path, filename")
+    .eq("id", parsed.data.documentId)
+    .maybeSingle();
+  if (!doc) return { ok: false, error: "Document not found." };
+
+  const { data, error } = await db.storage
+    .from("documents")
+    .createSignedUrl(doc.storage_path, 120, { download: doc.filename ?? true });
+  if (error || !data?.signedUrl) return { ok: false, error: "Could not create download link." };
+  return { ok: true, url: data.signedUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -561,7 +611,7 @@ export async function createPersonFromCv(formData: FormData): Promise<ActionResu
 
   // Store the CV with its standardised JSON, then complete the AI-usage
   // audit trail: the parse-time log row gets the document id as source_ref.
-  const stored = await persistDocument(file, personId, "cv", input.parsedCv);
+  const stored = await persistDocument(file, { personId }, "cv", input.parsedCv);
   if (!stored.ok) {
     return {
       ok: false,
@@ -920,6 +970,153 @@ export async function setMandateStatus(raw: unknown): Promise<ActionResult> {
   revalidatePath("/jobs");
   revalidatePath("/pipeline");
   return { ok: true, id: mandateId };
+}
+
+// ---------------------------------------------------------------------------
+// R4/F1 — candidacy feedback. One row (0010) surfaces on BOTH the job page
+// (mandate → candidacy) and the person page (person → candidacy); both routes
+// are revalidated on every write. Audit lands via the 0005 trigger.
+// ---------------------------------------------------------------------------
+
+const FeedbackInput = z.object({
+  candidacyId: z.string().uuid(),
+  source: z.enum(FEEDBACK_SOURCES),
+  author: optional(z.string().trim().max(200)),
+  body: z.string().trim().min(2).max(10000),
+});
+
+/** The candidacy's two page anchors, for revalidation and existence checks. */
+async function candidacyAnchors(candidacyId: string) {
+  const { data } = await db
+    .from("candidacy")
+    .select("person_id, mandate_id")
+    .eq("id", candidacyId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function logFeedback(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = FeedbackInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const input = parsed.data;
+
+  const anchors = await candidacyAnchors(input.candidacyId);
+  if (!anchors) return { ok: false, error: "Candidacy not found." };
+
+  const { data, error } = await db
+    .from("candidacy_feedback")
+    .insert({
+      candidacy_id: input.candidacyId,
+      source: input.source,
+      author: input.author ?? null,
+      body: input.body,
+    })
+    .select("id")
+    .single();
+  if (error || !data) return { ok: false, error: "Insert failed." };
+
+  revalidatePath(`/jobs/${anchors.mandate_id}`);
+  revalidatePath(`/people/${anchors.person_id}`);
+  return { ok: true, id: data.id };
+}
+
+const DeleteFeedbackInput = z.object({
+  feedbackId: z.string().uuid(),
+  confirmed: z.boolean().default(false),
+});
+
+/** Deleting feedback is destructive (ADR-013 rule 1): confirm first. The
+ *  audit log keeps the deletion evidence (0005) unless/until the person is
+ *  erased. */
+export async function deleteFeedback(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = DeleteFeedbackInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { feedbackId, confirmed } = parsed.data;
+
+  const { data: fb } = await db
+    .from("candidacy_feedback")
+    .select("id, source, candidacy_id")
+    .eq("id", feedbackId)
+    .maybeSingle();
+  if (!fb) return { ok: false, error: "Feedback not found." };
+
+  if (!confirmed) {
+    return {
+      ok: false,
+      needsConfirm: `Delete this ${label(fb.source)} feedback? It disappears from both the job and person pages; the deletion itself stays in the audit log.`,
+    };
+  }
+
+  const anchors = await candidacyAnchors(fb.candidacy_id);
+  const { error } = await db.from("candidacy_feedback").delete().eq("id", feedbackId);
+  if (error) return { ok: false, error: "Delete failed." };
+
+  if (anchors) {
+    revalidatePath(`/jobs/${anchors.mandate_id}`);
+    revalidatePath(`/people/${anchors.person_id}`);
+  }
+  return { ok: true, id: feedbackId };
+}
+
+// ---------------------------------------------------------------------------
+// R4/F2 — the role brief on the mandate. Salary and location reuse the 0006
+// columns (salary_range, location); team/package fields and the hiring
+// manager (a real person link, 0010) are new. The dialog always submits the
+// full brief state, so empty fields clear their columns deliberately.
+// ---------------------------------------------------------------------------
+
+const MandateBriefInput = z.object({
+  mandateId: z.string().uuid(),
+  brief: optional(z.string().trim().max(10000)),
+  salaryRange: optional(z.string().trim().max(100)),
+  location: optional(z.string().trim().max(200)),
+  team: optional(z.string().trim().max(200)),
+  bonus: optional(z.string().trim().max(200)),
+  carAllowance: optional(z.string().trim().max(200)),
+  pension: optional(z.string().trim().max(200)),
+  noticePeriod: optional(z.string().trim().max(200)),
+  hiringManagerId: optional(z.string().uuid()),
+});
+
+export async function updateMandateBrief(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = MandateBriefInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const input = parsed.data;
+
+  // The hiring manager must be a real, live person — never a dangling id,
+  // never an erased record (the FK would allow the former; we don't).
+  if (input.hiringManagerId) {
+    const { data: hm } = await db
+      .from("person")
+      .select("id, erased_at")
+      .eq("id", input.hiringManagerId)
+      .maybeSingle();
+    if (!hm) return { ok: false, error: "Hiring manager not found — pick them via search." };
+    if (hm.erased_at) return { ok: false, error: "That person record was erased and cannot be linked." };
+  }
+
+  const { error } = await db
+    .from("mandate")
+    .update({
+      brief: input.brief ?? null,
+      salary_range: input.salaryRange ?? null,
+      location: input.location ?? null,
+      team: input.team ?? null,
+      bonus: input.bonus ?? null,
+      car_allowance: input.carAllowance ?? null,
+      pension: input.pension ?? null,
+      notice_period: input.noticePeriod ?? null,
+      hiring_manager_id: input.hiringManagerId ?? null,
+    })
+    .eq("id", input.mandateId);
+  if (error) return { ok: false, error: "Update failed." };
+
+  revalidatePath(`/jobs/${input.mandateId}`);
+  revalidatePath("/jobs");
+  return { ok: true, id: input.mandateId };
 }
 
 // ---------------------------------------------------------------------------

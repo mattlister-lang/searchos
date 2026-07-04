@@ -6,9 +6,11 @@ import {
   OfferDialog,
 } from "@/components/forms/candidacy-forms";
 import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
+import { AddFeedbackDialog, DeleteFeedbackButton } from "@/components/forms/feedback-forms";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { StandardisedCv } from "@/components/standardised-cv";
-import { UploadCv } from "@/components/forms/upload-cv";
+import { UploadDocument } from "@/components/forms/upload-document";
+import { DownloadDocumentButton } from "@/components/download-document-button";
 import { ParsedCvSchema } from "@/lib/cv";
 import { db } from "@/lib/db";
 import { fmtDate } from "@/lib/format";
@@ -42,7 +44,8 @@ export default async function PersonPage({
            employment(title, is_current, start_date, end_date, company(id, name)),
            candidacy(id, stage, stage_changed_at, placed_at, notes,
                      mandate(id, title, company(id, name)),
-                     interview(id, round, kind, scheduled_at, outcome))`,
+                     interview(id, round, kind, scheduled_at, outcome),
+                     candidacy_feedback(id, source, author, body, created_at))`,
         )
         .eq("id", id)
         .maybeSingle(),
@@ -79,7 +82,7 @@ export default async function PersonPage({
           </h1>
           <div className="flex shrink-0 gap-2">
             <LogActivityDialog personId={person.id} contextLabel={person.full_name} />
-            <UploadCv personId={person.id} />
+            <UploadDocument target={{ personId: person.id }} kind="cv" label="Upload CV" />
             <EditProfileDialog
               personId={person.id}
               seniority={person.seniority}
@@ -205,10 +208,30 @@ export default async function PersonPage({
                     ))}
                 </div>
               )}
+              {c.candidacy_feedback.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1.5 border-t pt-2">
+                  {[...c.candidacy_feedback]
+                    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+                    .map((fb) => (
+                      <div key={fb.id} className="text-sm">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            <Badge variant="outline" className="mr-1.5 capitalize">{label(fb.source)}</Badge>
+                            {fb.author ? `${fb.author} · ` : ""}{fmtDate(fb.created_at)}
+                          </span>
+                          <DeleteFeedbackButton feedbackId={fb.id} />
+                        </div>
+                        <p className="mt-0.5 whitespace-pre-wrap">{fb.body}</p>
+                      </div>
+                    ))}
+                </div>
+              )}
               <div className="mt-2 flex gap-2">
                 <LogInterviewDialog candidacyId={c.id} candidateName={person.full_name} />
                 <OfferDialog candidacyId={c.id} candidateName={person.full_name}
                   mandateTitle={c.mandate?.title ?? ""} />
+                <AddFeedbackDialog candidacyId={c.id}
+                  contextLabel={`${person.full_name} · ${c.mandate?.title ?? "job"}`} />
               </div>
             </div>
           ))}
@@ -234,7 +257,10 @@ export default async function PersonPage({
                   </span>
                 )}
               </span>
-              <span className="text-xs text-muted-foreground">{fmtDate(d.created_at)}</span>
+              <span className="flex shrink-0 items-baseline gap-3">
+                <DownloadDocumentButton documentId={d.id} />
+                <span className="text-xs text-muted-foreground">{fmtDate(d.created_at)}</span>
+              </span>
             </div>
           ))}
         </CardContent>

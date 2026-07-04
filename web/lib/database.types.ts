@@ -89,6 +89,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "activity_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "activity_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -121,6 +128,13 @@ export type Database = {
             columns: ["mandate_id"]
             isOneToOne: false
             referencedRelation: "v_pipeline"
+            referencedColumns: ["mandate_id"]
+          },
+          {
+            foreignKeyName: "activity_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["mandate_id"]
           },
         ]
@@ -182,6 +196,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "activity_participant_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -340,6 +361,13 @@ export type Database = {
             referencedColumns: ["mandate_id"]
           },
           {
+            foreignKeyName: "candidacy_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["mandate_id"]
+          },
+          {
             foreignKeyName: "candidacy_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
@@ -378,8 +406,74 @@ export type Database = {
             foreignKeyName: "candidacy_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "candidacy_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
             referencedRelation: "v_statutory_purge"
             referencedColumns: ["person_id"]
+          },
+        ]
+      }
+      candidacy_feedback: {
+        Row: {
+          author: string | null
+          body: string
+          candidacy_id: string
+          created_at: string
+          id: string
+          source: Database["public"]["Enums"]["feedback_source"]
+          updated_at: string
+        }
+        Insert: {
+          author?: string | null
+          body: string
+          candidacy_id: string
+          created_at?: string
+          id?: string
+          source?: Database["public"]["Enums"]["feedback_source"]
+          updated_at?: string
+        }
+        Update: {
+          author?: string | null
+          body?: string
+          candidacy_id?: string
+          created_at?: string
+          id?: string
+          source?: Database["public"]["Enums"]["feedback_source"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "candidacy_feedback_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "candidacy"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "candidacy_feedback_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_pipeline"
+            referencedColumns: ["candidacy_id"]
+          },
+          {
+            foreignKeyName: "candidacy_feedback_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_stage_dwell"
+            referencedColumns: ["candidacy_id"]
+          },
+          {
+            foreignKeyName: "candidacy_feedback_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["candidacy_id"]
           },
         ]
       }
@@ -455,6 +549,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "v_deal_board"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "company_domain_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["company_id"]
           },
         ]
@@ -558,6 +659,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "deal_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "deal_primary_contact_id_fkey"
             columns: ["primary_contact_id"]
             isOneToOne: false
@@ -590,6 +698,13 @@ export type Database = {
             columns: ["primary_contact_id"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "deal_primary_contact_id_fkey"
+            columns: ["primary_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -673,6 +788,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "document_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "document_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -708,6 +830,13 @@ export type Database = {
             referencedColumns: ["mandate_id"]
           },
           {
+            foreignKeyName: "document_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["mandate_id"]
+          },
+          {
             foreignKeyName: "document_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
@@ -740,6 +869,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "document_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -808,6 +944,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "employment_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "employment_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
@@ -840,6 +983,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "employment_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -964,6 +1114,13 @@ export type Database = {
             referencedRelation: "v_stage_dwell"
             referencedColumns: ["candidacy_id"]
           },
+          {
+            foreignKeyName: "interview_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["candidacy_id"]
+          },
         ]
       }
       invoice: {
@@ -1025,11 +1182,20 @@ export type Database = {
             referencedRelation: "v_stage_dwell"
             referencedColumns: ["candidacy_id"]
           },
+          {
+            foreignKeyName: "invoice_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["candidacy_id"]
+          },
         ]
       }
       mandate: {
         Row: {
+          bonus: string | null
           brief: string | null
+          car_allowance: string | null
           closed_at: string | null
           company_id: string
           consultant: string
@@ -1038,18 +1204,24 @@ export type Database = {
           embedding: string | null
           fee_terms: string | null
           functions: string[]
+          hiring_manager_id: string | null
           id: string
           location: string | null
+          notice_period: string | null
           opened_at: string | null
+          pension: string | null
           salary_range: string | null
           seniority: string | null
           skills: string[]
           status: Database["public"]["Enums"]["mandate_status"]
+          team: string | null
           title: string
           updated_at: string
         }
         Insert: {
+          bonus?: string | null
           brief?: string | null
+          car_allowance?: string | null
           closed_at?: string | null
           company_id: string
           consultant?: string
@@ -1058,18 +1230,24 @@ export type Database = {
           embedding?: string | null
           fee_terms?: string | null
           functions?: string[]
+          hiring_manager_id?: string | null
           id?: string
           location?: string | null
+          notice_period?: string | null
           opened_at?: string | null
+          pension?: string | null
           salary_range?: string | null
           seniority?: string | null
           skills?: string[]
           status?: Database["public"]["Enums"]["mandate_status"]
+          team?: string | null
           title: string
           updated_at?: string
         }
         Update: {
+          bonus?: string | null
           brief?: string | null
+          car_allowance?: string | null
           closed_at?: string | null
           company_id?: string
           consultant?: string
@@ -1078,13 +1256,17 @@ export type Database = {
           embedding?: string | null
           fee_terms?: string | null
           functions?: string[]
+          hiring_manager_id?: string | null
           id?: string
           location?: string | null
+          notice_period?: string | null
           opened_at?: string | null
+          pension?: string | null
           salary_range?: string | null
           seniority?: string | null
           skills?: string[]
           status?: Database["public"]["Enums"]["mandate_status"]
+          team?: string | null
           title?: string
           updated_at?: string
         }
@@ -1111,6 +1293,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "mandate_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "mandate_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -1123,6 +1312,55 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_deal_board"
             referencedColumns: ["deal_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "person"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_deal_board"
+            referencedColumns: ["primary_contact_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_pipeline"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_relationship_freshness"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
           },
         ]
       }
@@ -1224,6 +1462,13 @@ export type Database = {
             foreignKeyName: "merge_queue_person_a_fkey"
             columns: ["person_a"]
             isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "merge_queue_person_a_fkey"
+            columns: ["person_a"]
+            isOneToOne: false
             referencedRelation: "v_statutory_purge"
             referencedColumns: ["person_id"]
           },
@@ -1260,6 +1505,13 @@ export type Database = {
             columns: ["person_b"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "merge_queue_person_b_fkey"
+            columns: ["person_b"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -1381,6 +1633,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_retention_review"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "person_email_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["person_id"]
           },
           {
@@ -1527,6 +1786,21 @@ export type Database = {
         }
         Relationships: []
       }
+      v_stale_candidacies: {
+        Row: {
+          candidacy_id: string | null
+          client: string | null
+          company_id: string | null
+          days_in_stage: number | null
+          mandate: string | null
+          mandate_id: string | null
+          person_id: string | null
+          person_name: string | null
+          stage: Database["public"]["Enums"]["candidacy_stage"] | null
+          stage_changed_at: string | null
+        }
+        Relationships: []
+      }
       v_statutory_purge: {
         Row: {
           erased_at: string | null
@@ -1554,6 +1828,13 @@ export type Database = {
             columns: ["mandate_id"]
             isOneToOne: false
             referencedRelation: "v_pipeline"
+            referencedColumns: ["mandate_id"]
+          },
+          {
+            foreignKeyName: "candidacy_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_stale_candidacies"
             referencedColumns: ["mandate_id"]
           },
         ]
@@ -1625,6 +1906,7 @@ export type Database = {
         | "won"
         | "lost"
       document_kind: "cv" | "spec" | "terms" | "other"
+      feedback_source: "client" | "consultant"
       interview_kind:
         | "consultant"
         | "phone"
@@ -1798,6 +2080,7 @@ export const Constants = {
         "lost",
       ],
       document_kind: ["cv", "spec", "terms", "other"],
+      feedback_source: ["client", "consultant"],
       interview_kind: [
         "consultant",
         "phone",

@@ -666,5 +666,267 @@ begin
   raise notice 'TEST 15 OK: ai_spend_this_month_gbp sums current month only';
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- 0010 fixtures (UAT R4) — dedicated hex-only rows (L-012), independent of the
+-- merge/erasure state mutated above. One client, five people, three mandates:
+--   f011  hiring manager of e011 AND a never-placed candidate on e012 (ca01,
+--         with feedback fb01) — drives feedback CRUD + never-placed erasure.
+--   f012  placed candidate on e011 (ca02, feedback fb02 + interview + invoice)
+--         — drives redacted erasure.
+--   f013/f014  hiring-manager merge repoint (f014 is e012's hiring manager).
+--   f015  fresh candidacies for the dwell-view exclusion cases.
+-- ---------------------------------------------------------------------------
+insert into company (id, name, status, sectors) values
+  ('00000000-0000-0000-0000-00000000c003', 'R4 Client', 'client', '{grid}');
+
+insert into person (id, full_name) values
+  ('00000000-0000-0000-0000-00000000f011', 'FB HM Candidate'),
+  ('00000000-0000-0000-0000-00000000f012', 'Placed FB Cand'),
+  ('00000000-0000-0000-0000-00000000f013', 'HM Keep'),
+  ('00000000-0000-0000-0000-00000000f014', 'HM Remove'),
+  ('00000000-0000-0000-0000-00000000f015', 'Recent Cand');
+
+insert into person_email (person_id, email, is_primary) values
+  ('00000000-0000-0000-0000-00000000f011', 'fb-cand@r4.example', true),
+  ('00000000-0000-0000-0000-00000000f012', 'placed-fb@r4.example', true);
+
+-- e011 hiring manager = f011; e012 hiring manager = f014; e013 is closed.
+insert into mandate (id, company_id, title, status, hiring_manager_id) values
+  ('00000000-0000-0000-0000-00000000e011', '00000000-0000-0000-0000-00000000c003', 'R4 Live A', 'open',      '00000000-0000-0000-0000-00000000f011'),
+  ('00000000-0000-0000-0000-00000000e012', '00000000-0000-0000-0000-00000000c003', 'R4 Live B', 'open',      '00000000-0000-0000-0000-00000000f014'),
+  ('00000000-0000-0000-0000-00000000e013', '00000000-0000-0000-0000-00000000c003', 'R4 Closed', 'completed', null);
+
+insert into candidacy (id, person_id, mandate_id, stage, stage_changed_at) values
+  ('00000000-0000-0000-0000-0000000ca001', '00000000-0000-0000-0000-00000000f011', '00000000-0000-0000-0000-00000000e012', 'client_interview', now() - interval '10 days'),
+  ('00000000-0000-0000-0000-0000000ca002', '00000000-0000-0000-0000-00000000f012', '00000000-0000-0000-0000-00000000e011', 'placed',           now()),
+  ('00000000-0000-0000-0000-0000000ca003', '00000000-0000-0000-0000-00000000f015', '00000000-0000-0000-0000-00000000e012', 'screening',        now() - interval '2 days'),
+  ('00000000-0000-0000-0000-0000000ca004', '00000000-0000-0000-0000-00000000f015', '00000000-0000-0000-0000-00000000e013', 'client_interview', now() - interval '30 days'),
+  ('00000000-0000-0000-0000-0000000ca005', '00000000-0000-0000-0000-00000000f015', '00000000-0000-0000-0000-00000000e011', 'rejected',         now() - interval '20 days');
+
+insert into candidacy_feedback (id, candidacy_id, source, author, body) values
+  ('00000000-0000-0000-0000-0000000fb001', '00000000-0000-0000-0000-0000000ca001', 'client',     'Client, R4', 'Light on grid experience'),
+  ('00000000-0000-0000-0000-0000000fb002', '00000000-0000-0000-0000-0000000ca002', 'consultant', null,         'Strong technical — identifying detail');
+
+insert into interview (candidacy_id, round, kind, feedback, notes) values
+  ('00000000-0000-0000-0000-0000000ca002', 1, 'panel', 'Panel liked them — identifying', 'private notes');
+
+insert into invoice (candidacy_id, amount, status, issued_at) values
+  ('00000000-0000-0000-0000-0000000ca002', 30000, 'issued', current_date);
+
+-- ---------------------------------------------------------------------------
+-- Test 16 (F1): candidacy_feedback surfaces on BOTH the job page (via mandate)
+-- and the person page (via person) as ONE row; CRUD is audited.
+-- ---------------------------------------------------------------------------
+do $$
+declare n int;
+begin
+  -- Job-page path: mandate e012 → candidacy → feedback
+  select count(*) into n from candidacy_feedback fbk
+  join candidacy c on c.id = fbk.candidacy_id
+  where c.mandate_id = '00000000-0000-0000-0000-00000000e012';
+  if n <> 1 then raise exception 'TEST 16 FAILED: feedback not reachable via mandate (job page), got %', n; end if;
+
+  -- Person-page path: person f011 → candidacy → feedback
+  select count(*) into n from candidacy_feedback fbk
+  join candidacy c on c.id = fbk.candidacy_id
+  where c.person_id = '00000000-0000-0000-0000-00000000f011';
+  if n <> 1 then raise exception 'TEST 16 FAILED: feedback not reachable via person (person page), got %', n; end if;
+
+  -- One entry, two views: the same row satisfies both paths.
+  if not exists (
+    select 1 from candidacy_feedback fbk
+    join candidacy c on c.id = fbk.candidacy_id
+    where fbk.id = '00000000-0000-0000-0000-0000000fb001'
+      and c.mandate_id = '00000000-0000-0000-0000-00000000e012'
+      and c.person_id  = '00000000-0000-0000-0000-00000000f011') then
+    raise exception 'TEST 16 FAILED: job and person views are not the same feedback row';
+  end if;
+
+  -- Create audited (C).
+  if not exists (select 1 from audit_log where table_name = 'candidacy_feedback' and op = 'INSERT'
+                 and new_row ->> 'body' = 'Light on grid experience') then
+    raise exception 'TEST 16 FAILED: feedback insert not audited';
+  end if;
+
+  -- Update audited with before/after (U).
+  update candidacy_feedback set body = 'Light on grid, strong commercially'
+  where id = '00000000-0000-0000-0000-0000000fb001';
+  if not exists (select 1 from audit_log where table_name = 'candidacy_feedback' and op = 'UPDATE'
+                 and new_row ->> 'body' = 'Light on grid, strong commercially'
+                 and old_row ->> 'body' = 'Light on grid experience') then
+    raise exception 'TEST 16 FAILED: feedback update not audited with old/new';
+  end if;
+  raise notice 'TEST 16 OK: candidacy_feedback surfaces on job + person as one row, CRUD audited';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 17 (F4): v_stale_candidacies surfaces live+stale candidacies with link
+-- ids/names (0007) and excludes below-threshold, terminal, and non-open.
+-- ---------------------------------------------------------------------------
+do $$
+declare r v_stale_candidacies%rowtype;
+begin
+  select * into r from v_stale_candidacies where candidacy_id = '00000000-0000-0000-0000-0000000ca001';
+  if not found then raise exception 'TEST 17 FAILED: stale candidacy not surfaced'; end if;
+  if r.person_id is null or r.mandate_id is null or r.company_id is null
+     or r.person_name is null or r.mandate is null or r.client is null then
+    raise exception 'TEST 17 FAILED: view missing link ids/names (0007 lesson)';
+  end if;
+  if r.days_in_stage < 7 then
+    raise exception 'TEST 17 FAILED: days_in_stage below threshold (%)', r.days_in_stage;
+  end if;
+
+  -- Below the 7-day threshold (ca003, 2 days) — excluded.
+  if exists (select 1 from v_stale_candidacies where candidacy_id = '00000000-0000-0000-0000-0000000ca003') then
+    raise exception 'TEST 17 FAILED: below-threshold candidacy surfaced';
+  end if;
+  -- Terminal stage though old (ca005, rejected, 20 days) — excluded.
+  if exists (select 1 from v_stale_candidacies where candidacy_id = '00000000-0000-0000-0000-0000000ca005') then
+    raise exception 'TEST 17 FAILED: terminal-stage candidacy surfaced';
+  end if;
+  -- Old + live but on a non-open mandate (ca004 on completed e013) — excluded.
+  if exists (select 1 from v_stale_candidacies where candidacy_id = '00000000-0000-0000-0000-0000000ca004') then
+    raise exception 'TEST 17 FAILED: candidacy on non-open mandate surfaced';
+  end if;
+  raise notice 'TEST 17 OK: v_stale_candidacies carries link ids, excludes below-threshold/terminal/non-open';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 18 (F2): merge_people repoints mandate.hiring_manager_id (L-009 class).
+-- e012's hiring manager is f014; merge it into f013 → the mandate now points at
+-- f013, not an orphaned id.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if (select hiring_manager_id from mandate where id = '00000000-0000-0000-0000-00000000e012')
+     <> '00000000-0000-0000-0000-00000000f014' then
+    raise exception 'TEST 18 SETUP FAILED: e012 hiring manager is not f014';
+  end if;
+end $$;
+
+select merge_people('00000000-0000-0000-0000-00000000f013',
+                    '00000000-0000-0000-0000-00000000f014');
+
+do $$
+begin
+  if exists (select 1 from person where id = '00000000-0000-0000-0000-00000000f014') then
+    raise exception 'TEST 18 FAILED: removed person still exists';
+  end if;
+  if (select hiring_manager_id from mandate where id = '00000000-0000-0000-0000-00000000e012')
+     <> '00000000-0000-0000-0000-00000000f013' then
+    raise exception 'TEST 18 FAILED: hiring_manager_id not repointed to the kept person';
+  end if;
+  raise notice 'TEST 18 OK: merge_people repoints mandate.hiring_manager_id';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 19 (F1 + F2 + GDPR): erasing a never-placed person who is both a
+-- hiring manager (e011) and a candidate with feedback (ca001) hard-deletes,
+-- purges the feedback, nulls the hiring-manager FK, and leaves NO audit row
+-- referencing them — via person_id, hiring_manager_id, or candidacy_id.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if (select hiring_manager_id from mandate where id = '00000000-0000-0000-0000-00000000e011')
+     <> '00000000-0000-0000-0000-00000000f011' then
+    raise exception 'TEST 19 SETUP FAILED: e011 hiring manager is not f011';
+  end if;
+end $$;
+
+select erase_person('00000000-0000-0000-0000-00000000f011');
+
+do $$
+declare n int;
+begin
+  if exists (select 1 from person where id = '00000000-0000-0000-0000-00000000f011') then
+    raise exception 'TEST 19 FAILED: never-placed person not hard deleted';
+  end if;
+  if exists (select 1 from candidacy_feedback where id = '00000000-0000-0000-0000-0000000fb001') then
+    raise exception 'TEST 19 FAILED: feedback survived erasure';
+  end if;
+  if (select hiring_manager_id from mandate where id = '00000000-0000-0000-0000-00000000e011') is not null then
+    raise exception 'TEST 19 FAILED: hiring_manager_id not nulled on erase';
+  end if;
+  select count(*) into n from audit_log
+  where row_id = '00000000-0000-0000-0000-00000000f011'
+     or old_row ->> 'person_id'         = '00000000-0000-0000-0000-00000000f011'
+     or new_row ->> 'person_id'         = '00000000-0000-0000-0000-00000000f011'
+     or old_row ->> 'hiring_manager_id' = '00000000-0000-0000-0000-00000000f011'
+     or new_row ->> 'hiring_manager_id' = '00000000-0000-0000-0000-00000000f011'
+     or (table_name in ('candidacy_feedback', 'interview')
+         and (old_row ->> 'candidacy_id' = '00000000-0000-0000-0000-0000000ca001'
+           or new_row ->> 'candidacy_id' = '00000000-0000-0000-0000-0000000ca001'));
+  if n <> 0 then
+    raise exception 'TEST 19 FAILED: % audit rows still reference the erased person/feedback', n;
+  end if;
+  raise notice 'TEST 19 OK: never-placed erase purges feedback, nulls hiring FK, leaves no audit trace';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Test 20 (F1 + GDPR): redacted (placed) erasure of f012 keeps the placement
+-- lineage but purges the identifying feedback AND interview on the surviving
+-- placed candidacy (data + audit), while preserving the statutory invoice and
+-- ITS audit — proving the candidacy_id purge is table-scoped, not a blanket.
+-- ---------------------------------------------------------------------------
+select erase_person('00000000-0000-0000-0000-00000000f012');
+
+do $$
+declare v_person person%rowtype; n int;
+begin
+  select * into v_person from person where id = '00000000-0000-0000-0000-00000000f012';
+  if not found then raise exception 'TEST 20 FAILED: placed person hard-deleted instead of redacted'; end if;
+  if v_person.erased_at is null or v_person.full_name <> '[erased]' then
+    raise exception 'TEST 20 FAILED: identity not redacted';
+  end if;
+
+  -- Placement lineage survives.
+  if not exists (select 1 from candidacy where id = '00000000-0000-0000-0000-0000000ca002' and stage = 'placed') then
+    raise exception 'TEST 20 FAILED: placed candidacy lineage lost';
+  end if;
+
+  -- Identifying process detail on the surviving candidacy is gone (data).
+  if exists (select 1 from candidacy_feedback where candidacy_id = '00000000-0000-0000-0000-0000000ca002') then
+    raise exception 'TEST 20 FAILED: feedback on surviving placed candidacy not purged';
+  end if;
+  if exists (select 1 from interview where candidacy_id = '00000000-0000-0000-0000-0000000ca002') then
+    raise exception 'TEST 20 FAILED: interview on surviving placed candidacy not purged';
+  end if;
+  if exists (select 1 from candidacy where id = '00000000-0000-0000-0000-0000000ca002' and notes is not null) then
+    raise exception 'TEST 20 FAILED: identifying notes retained';
+  end if;
+  if not exists (select 1 from suppression_list
+                 where email_hash = encode(digest('placed-fb@r4.example', 'sha256'), 'hex')) then
+    raise exception 'TEST 20 FAILED: placed person email not suppressed';
+  end if;
+
+  -- No feedback/interview audit rows reference the surviving candidacy.
+  select count(*) into n from audit_log
+  where table_name in ('candidacy_feedback', 'interview')
+    and (old_row ->> 'candidacy_id' = '00000000-0000-0000-0000-0000000ca002'
+      or new_row ->> 'candidacy_id' = '00000000-0000-0000-0000-0000000ca002');
+  if n <> 0 then
+    raise exception 'TEST 20 FAILED: % feedback/interview audit rows still reference the placed candidacy', n;
+  end if;
+
+  -- No audit row references the erased person directly either.
+  select count(*) into n from audit_log
+  where row_id = '00000000-0000-0000-0000-00000000f012'
+     or old_row ->> 'person_id' = '00000000-0000-0000-0000-00000000f012'
+     or new_row ->> 'person_id' = '00000000-0000-0000-0000-00000000f012';
+  if n <> 0 then
+    raise exception 'TEST 20 FAILED: % audit rows still reference the erased person', n;
+  end if;
+
+  -- Statutory invoice (fee lineage) and its audit survive — table-scoped purge.
+  if not exists (select 1 from invoice where candidacy_id = '00000000-0000-0000-0000-0000000ca002') then
+    raise exception 'TEST 20 FAILED: statutory invoice destroyed by redacted erasure';
+  end if;
+  if not exists (select 1 from audit_log where table_name = 'invoice'
+                 and new_row ->> 'candidacy_id' = '00000000-0000-0000-0000-0000000ca002') then
+    raise exception 'TEST 20 FAILED: invoice audit over-purged (candidacy_id scope too broad)';
+  end if;
+  raise notice 'TEST 20 OK: redacted erase purges feedback+interview (data+audit), keeps invoice lineage+audit';
+end $$;
+
 rollback;
 \echo ALL BEHAVIOUR TESTS PASSED
