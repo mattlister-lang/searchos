@@ -80,7 +80,11 @@ export function AddCandidacyDialog(props: {
       {!props.fixedMandateId && (
         <Field label="Mandate">
           <Select value={f.form.mandateId} onValueChange={(v) => v && f.set("mandateId")(v)}>
-            <SelectTrigger><SelectValue placeholder="Pick a mandate" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Pick a mandate">
+                {props.mandates.find((m) => m.id === f.form.mandateId)?.title ?? null}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               {props.mandates.map((m) => (
                 <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
@@ -103,7 +107,9 @@ export function MoveStageControl(props: { candidacyId: string; stage: string }) 
     <>
       <Select value={props.stage}
         onValueChange={(v) => v && void move.run({ candidacyId: props.candidacyId, stage: v })}>
-        <SelectTrigger className="h-7 w-full text-xs"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-7 w-full text-xs capitalize">
+          <SelectValue>{label(props.stage)}</SelectValue>
+        </SelectTrigger>
         <SelectContent>
           {CANDIDACY_STAGES.map((s) => (
             <SelectItem key={s} value={s} className="capitalize text-xs">
@@ -127,7 +133,9 @@ export function MandateStatusControl(props: { mandateId: string; status: string 
     <>
       <Select value={props.status}
         onValueChange={(v) => v && void set.run({ mandateId: props.mandateId, status: v })}>
-        <SelectTrigger className="h-8 w-36 text-xs capitalize"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-8 w-36 text-xs capitalize">
+          <SelectValue>{label(props.status)}</SelectValue>
+        </SelectTrigger>
         <SelectContent>
           {MANDATE_STATUSES.map((s) => (
             <SelectItem key={s} value={s} className="capitalize text-xs">

@@ -46,6 +46,24 @@ export function JobKanban(props: { cards: KanbanCard[] }) {
     void move.run({ candidacyId, stage });
   }
 
+  /** Explicit drag image: a plain-styled clone of just the card. Left to its
+   *  own devices the browser can rasterise far more than the dragged element
+   *  (Matt saw the entire UI move) — a detached clone is deterministic. */
+  function setCardDragImage(e: React.DragEvent<HTMLDivElement>) {
+    const node = e.currentTarget;
+    const ghost = node.cloneNode(true) as HTMLElement;
+    ghost.style.position = "fixed";
+    ghost.style.top = "-1000px";
+    ghost.style.left = "-1000px";
+    ghost.style.width = `${node.offsetWidth}px`;
+    ghost.style.pointerEvents = "none";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, node.offsetWidth / 2, 20);
+    // The browser snapshots the image synchronously on dragstart; the clone
+    // can go on the next tick.
+    setTimeout(() => ghost.remove(), 0);
+  }
+
   return (
     <div className="overflow-x-auto">
       <div className="flex min-w-max gap-4">
@@ -83,12 +101,13 @@ export function JobKanban(props: { cards: KanbanCard[] }) {
                   onDragStart={(e) => {
                     e.dataTransfer.setData("text/plain", c.candidacyId);
                     e.dataTransfer.effectAllowed = "move";
+                    setCardDragImage(e);
                   }}
                   className="cursor-grab py-3 active:cursor-grabbing"
                 >
                   <CardContent className="px-3">
                     {c.personId ? (
-                      <Link href={`/people/${c.personId}`}
+                      <Link href={`/people/${c.personId}`} draggable={false}
                         className="text-sm font-medium hover:underline">
                         {c.personName}
                       </Link>

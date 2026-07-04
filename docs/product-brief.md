@@ -226,3 +226,42 @@ agreed in conversation; each lands via the engineering.md workflow.
    probability weighting)
 3. **R3**: P3 + I1 + I3 (drag-drop; CV pipeline once the AI ADR is agreed)
 4. **R4**: P4 + I2 (job-page depth, enrichment)
+
+## 11. UAT feedback — round 2 (Matt, 4 Jul 2026, post-R3)
+
+### Bugs (fixed same-day)
+- **B2 Kanban drag ghost** — dragging a candidate card rasterised the whole
+  UI as the drag image; explicit cloned drag ghost fixes it.
+- **B3 Raw Select values** — filter dropdowns showed the `__any__` sentinel
+  and enum values rendered raw/lowercase (`on_hold`); Base UI's Select.Value
+  needs explicit children, fixed across every Select.
+
+### R4 — the job page becomes the workspace (P4, scoped by Matt)
+- **Candidate feedback per candidacy** — capture client/consultant feedback
+  against a candidate-in-job; must surface on BOTH the job page and the
+  person page (both records linked to the same entry).
+- **The brief** — the role's full spec on the job page: salary, package
+  (bonus, car allowance, pension, notice period), team, location, and the
+  **line manager as a linked person record**. Feeds future company maps.
+- **JD file at hand** — the job-description file attached to the mandate,
+  one click to (re)download, ready to forward; document table already
+  supports mandate-linked `spec` docs.
+- **Stage-dwell nudges** — "X has been at client_interview 9 days — chase?"
+  surfaced proactively (dashboard next-actions), building on stage_changed_at.
+  Matt: "the more the platform surfaces at the right time, the better."
+- **Activity log on the job page** — everything that happened on this
+  mandate, at the bottom of the page.
+
+### Roadmap (bigger pieces, each needs a design pass / ADR before build)
+- **Email through the system** — send/log email from SearchOS via the
+  @offtakesearch.com mailbox (ADR-011 boundary). Needs a spike: Gmail API vs
+  SMTP, template handling, logging to activity. Not started.
+- **Company news** — surface recent, well-sourced news per company (funding
+  rounds etc.) as part of the intelligence layer — only if very cheap to run
+  (ADR-015 discipline; likely interactive/on-demand first, never unattended).
+- **Opportunity intelligence** — watch prospect/client career pages for new
+  postings and match them against candidates in the pool (location, salary,
+  function). HARD CONSTRAINT: no LinkedIn scraping, ever (ADR-009) — company
+  career pages/ATS feeds only; unattended runs would also reopen ADR-018.
+  The guiding star, verbatim: *"if it can save me time and make me more
+  money, I will be over the moon."*

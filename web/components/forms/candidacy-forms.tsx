@@ -50,7 +50,9 @@ export function InterviewOutcomeControl(props: { interviewId: string; outcome: s
   }
   return (
     <Select value={props.outcome} onValueChange={(v) => v && change(v)}>
-      <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
+      <SelectTrigger className="h-7 w-32 text-xs capitalize">
+        <SelectValue>{label(props.outcome)}</SelectValue>
+      </SelectTrigger>
       <SelectContent>
         {INTERVIEW_OUTCOMES.map((o) => (
           <SelectItem key={o} value={o} className="capitalize text-xs">

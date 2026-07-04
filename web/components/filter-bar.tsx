@@ -43,10 +43,16 @@ export function FilterBar({ filters }: { filters: FilterSpec[] }) {
     <div className="flex flex-wrap items-center gap-2">
       {filters.map((f) => {
         const current = searchParams.get(f.param) ?? ANY;
+        // Base UI's Select.Value renders the RAW value unless given children —
+        // without this the trigger shows "__any__" / "on_hold" (UAT R4 bug).
+        const display =
+          current === ANY
+            ? `Any ${f.label.toLowerCase()}`
+            : (f.options.find((o) => o.value === current)?.label ?? current);
         return (
           <Select key={f.param} value={current} onValueChange={(v) => v && update(f.param, v)}>
             <SelectTrigger size="sm" className="w-auto min-w-36 capitalize">
-              <SelectValue />
+              <SelectValue>{display}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ANY} className="capitalize">
