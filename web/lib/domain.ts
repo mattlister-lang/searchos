@@ -156,6 +156,17 @@ const TITLE_STOPWORDS = new Set([
   "of", "to", "in", "at", "an",
 ]);
 
+/** Lowercase, strip punctuation (keep hyphens), collapse whitespace. The one
+ *  text-normaliser for both Boolean query builders (no second copy of the
+ *  regex, engineering.md §2). */
+function normaliseForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * Build a websearch Boolean query from a job-posting title, for the people
  * search (`/people?q=` → search_people_boolean, which speaks websearch syntax:
@@ -166,11 +177,7 @@ const TITLE_STOPWORDS = new Set([
  * the cleaned title when a title is all stopwords/too short to yield keywords.
  */
 export function booleanQueryFromTitle(title: string): string {
-  const cleaned = title
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const cleaned = normaliseForSearch(title);
 
   const seen = new Set<string>();
   const terms: string[] = [];
@@ -180,5 +187,38 @@ export function booleanQueryFromTitle(title: string): string {
     terms.push(word.includes(" ") ? `"${word}"` : word);
   }
   if (terms.length === 0) return cleaned;
+  return terms.join(" OR ");
+}
+
+/**
+ * Build a websearch Boolean query from a standardised job spec (R6 / Radar):
+ * the extracted skills OR'd with the significant title keywords, so the pool
+ * search casts a wide, ranked net over name/skills/functions/sectors/CV text.
+ * Multi-word skills become quoted phrases (same convention as
+ * booleanQueryFromTitle); single title words drop stopwords/too-short tokens.
+ * Pure and client-safe — the Radar page uses it for the "open in People search"
+ * link, and matchSpecInternal uses the identical string server-side.
+ */
+export function booleanQueryFromSpec(spec: {
+  title?: string | null;
+  skills?: readonly string[] | null;
+}): string {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  const add = (raw: string) => {
+    const v = normaliseForSearch(raw);
+    if (!v || seen.has(v)) return;
+    if (v.includes(" ")) {
+      seen.add(v);
+      terms.push(`"${v}"`); // multi-word skill → phrase match
+    } else {
+      if (v.length < 3 || TITLE_STOPWORDS.has(v)) return;
+      seen.add(v);
+      terms.push(v);
+    }
+  };
+  for (const s of spec.skills ?? []) add(s);
+  for (const w of normaliseForSearch(spec.title ?? "").split(" ")) add(w);
+  if (terms.length === 0) return normaliseForSearch(spec.title ?? "");
   return terms.join(" OR ");
 }

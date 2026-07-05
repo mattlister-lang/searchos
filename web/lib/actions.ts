@@ -10,6 +10,8 @@ import {
   fetchOrgNews,
   matchPerson,
   NewsArticleSchema,
+  searchPeople as searchApolloPeople,
+  type ApolloPerson,
   type CompanyEnrichment,
   type JobPosting,
   type NewsArticle,
@@ -18,10 +20,12 @@ import {
 import { requireUser } from "@/lib/auth";
 import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
-import { extractCv, linkAiLogToDocument } from "@/lib/ai";
+import { extractCv, extractJd, linkAiLogToDocument } from "@/lib/ai";
 import { ParsedCvSchema, type ParsedCv } from "@/lib/cv";
+import { type ParsedJd } from "@/lib/jd";
 import {
   ACTIVITY_TYPES,
+  booleanQueryFromSpec,
   CANDIDACY_STAGES,
   clampTags,
   COMPANY_STATUSES,
@@ -1232,6 +1236,31 @@ export async function fetchCompanyEnrichment(raw: unknown): Promise<EnrichPrevie
   return { ok: true, enrichment: result.enrichment, domain };
 }
 
+/** Append a dated block to a company's notes — append-never-clobber, bounded to
+ *  the 5000-char budget the edit form enforces (the slice trims the appended
+ *  block, never Matt's own notes). The ONE implementation for every notes-append
+ *  site (enrichment, news, spec-in) — no third hand-rolled copy (engineering.md
+ *  §3). Callers build the block (with its dated header); this owns fetch +
+ *  append + write. */
+async function appendCompanyNotes(
+  companyId: string,
+  block: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: company } = await db
+    .from("company")
+    .select("notes")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (!company) return { ok: false, error: "Company not found." };
+
+  const existing = company.notes ? `${company.notes}\n\n` : "";
+  const notes = (existing + block).slice(0, 5000);
+
+  const { error } = await db.from("company").update({ notes }).eq("id", companyId);
+  if (error) return { ok: false, error: "Update failed." };
+  return { ok: true };
+}
+
 const EnrichApplyInput = z.object({
   companyId: z.string().uuid(),
   enrichment: CompanyEnrichmentSchema,
@@ -1242,13 +1271,6 @@ export async function applyCompanyEnrichment(raw: unknown): Promise<ActionResult
   const parsed = EnrichApplyInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Invalid input." };
   const { companyId, enrichment: e } = parsed.data;
-
-  const { data: company } = await db
-    .from("company")
-    .select("notes")
-    .eq("id", companyId)
-    .maybeSingle();
-  if (!company) return { ok: false, error: "Company not found." };
 
   const lines = [
     `— Apollo enrichment (${new Date().toISOString().slice(0, 10)}) —`,
@@ -1262,13 +1284,8 @@ export async function applyCompanyEnrichment(raw: unknown): Promise<ActionResult
   ].filter(Boolean) as string[];
   if (lines.length <= 1) return { ok: false, error: "Apollo returned nothing worth saving." };
 
-  // Append, never clobber — and stay inside the 5000-char notes budget the
-  // edit form enforces, trimming the enrichment block, not Matt's own notes.
-  const existing = company.notes ? `${company.notes}\n\n` : "";
-  const notes = (existing + lines.join("\n")).slice(0, 5000);
-
-  const { error } = await db.from("company").update({ notes }).eq("id", companyId);
-  if (error) return { ok: false, error: "Update failed." };
+  const appended = await appendCompanyNotes(companyId, lines.join("\n"));
+  if (!appended.ok) return appended;
 
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/companies");
@@ -1363,13 +1380,6 @@ export async function appendCompanyNews(raw: unknown): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: "Invalid input." };
   const { companyId, articles } = parsed.data;
 
-  const { data: company } = await db
-    .from("company")
-    .select("notes")
-    .eq("id", companyId)
-    .maybeSingle();
-  if (!company) return { ok: false, error: "Company not found." };
-
   const items = articles
     .filter((a) => a.title)
     .slice(0, 8)
@@ -1383,11 +1393,8 @@ export async function appendCompanyNews(raw: unknown): Promise<ActionResult> {
   if (items.length === 0) return { ok: false, error: "No news worth saving." };
 
   const block = [`— Apollo news (${new Date().toISOString().slice(0, 10)}) —`, ...items].join("\n");
-  const existing = company.notes ? `${company.notes}\n\n` : "";
-  const notes = (existing + block).slice(0, 5000);
-
-  const { error } = await db.from("company").update({ notes }).eq("id", companyId);
-  if (error) return { ok: false, error: "Update failed." };
+  const appended = await appendCompanyNotes(companyId, block);
+  if (!appended.ok) return appended;
 
   revalidatePath(`/companies/${companyId}`);
   revalidatePath("/companies");
@@ -1486,4 +1493,196 @@ export async function addFoundEmail(raw: unknown): Promise<ActionResult> {
 
   revalidatePath(`/people/${personId}`);
   return { ok: true, id: personId };
+}
+
+// ---------------------------------------------------------------------------
+// R6 — the Radar page (product brief §12): JD in → spec out → matches → action.
+// The whole page is STATELESS — nothing is persisted until Matt takes an
+// explicit action (Create job / Log BD deal / Add person), each of which runs
+// an existing confirm-gated write path. These read/parse actions just power the
+// interactive workspace; every AI call is logged (ADR-024), every Apollo call
+// is one explicit click (ADR-025).
+// ---------------------------------------------------------------------------
+
+export type JdParseResult =
+  | { ok: true; parsed: ParsedJd; aiLogId: string | null; warning?: string }
+  | { ok: false; error: string };
+
+const AnalyseJdInput = z.object({ text: z.string().trim().min(20) });
+
+/** F1 — parse a pasted job advert. Cost guard, Claude call and ai_usage_log
+ *  entry all live in lib/ai.ts (purpose "jd_parse"). */
+export async function analyseJdText(raw: unknown): Promise<JdParseResult> {
+  await requireUser();
+  const parsed = AnalyseJdInput.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: "Paste at least a couple of lines of the advert first." };
+  }
+  return extractJd(parsed.data.text);
+}
+
+/** F1 — parse a dropped job-advert file. Same extractText path as parseCv, then
+ *  the same extractJd. */
+export async function analyseJdFile(formData: FormData): Promise<JdParseResult> {
+  await requireUser();
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { ok: false, error: "No file." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
+
+  const text = await extractText(file);
+  if (!text || text.trim().length < 20) {
+    return {
+      ok: false,
+      error: "Could not extract enough text from this file — use a PDF/DOCX with selectable text, or paste the advert.",
+    };
+  }
+  return extractJd(text);
+}
+
+// F2 — internal match: build a Boolean query from the spec's skills + title,
+// run it through search_people_boolean (the same RPC the People page uses),
+// hydrate the top ~10 live people for a ranked list. Read-only.
+export type SpecMatch = {
+  id: string;
+  fullName: string;
+  currentRole: string | null;
+  seniority: string | null;
+  sectors: string[];
+};
+
+export type SpecMatchResult =
+  | { ok: true; people: SpecMatch[]; query: string }
+  | { ok: false; error: string };
+
+const SpecMatchInput = z.object({
+  title: optional(z.string().trim().max(200)),
+  skills: z.array(z.string().trim().max(60)).max(30).default([]),
+});
+
+export async function matchSpecInternal(raw: unknown): Promise<SpecMatchResult> {
+  await requireUser();
+  const parsed = SpecMatchInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { title, skills } = parsed.data;
+
+  const query = booleanQueryFromSpec({ title, skills });
+  if (!query.trim()) return { ok: true, people: [], query };
+
+  const { data: hits, error } = await db.rpc("search_people_boolean", { q: query });
+  if (error) return { ok: false, error: "Pool search failed." };
+  const ids = (hits ?? []).map((h) => h.person_id).slice(0, 10);
+  if (ids.length === 0) return { ok: true, people: [], query };
+
+  const { data } = await db
+    .from("person")
+    .select("id, full_name, seniority, sectors, employment(title, is_current, company(name))")
+    .is("erased_at", null)
+    .in("id", ids);
+
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  const people: SpecMatch[] = (data ?? [])
+    .map((p) => {
+      const current = p.employment.find((e) => e.is_current) ?? p.employment[0];
+      const parts = [current?.title, current?.company?.name].filter(Boolean);
+      return {
+        id: p.id,
+        fullName: p.full_name,
+        currentRole: parts.length ? parts.join(" · ") : null,
+        seniority: p.seniority,
+        sectors: p.sectors ?? [],
+      };
+    })
+    .sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+
+  return { ok: true, people, query };
+}
+
+// F3 — Log BD deal from the spec. Resolution before creation: resolve the
+// company by name; if it is genuinely new, creating it is confirm-gated
+// (needsConfirm) so a spec-in never blind-creates. Then reuse upsertDeal (the
+// resolution + required-next-step + insert path) for a lead-stage deal, and
+// append the spec summary to the company notes (append-never-clobber).
+const SpecDealInput = z.object({
+  companyName: z.string().trim().min(2),
+  name: z.string().trim().min(2).max(200),
+  nextStep: z.string().trim().min(2).max(500),
+  summary: optional(z.string().trim().max(4000)),
+  createCompany: z.boolean().default(false),
+});
+
+export async function logSpecDeal(raw: unknown): Promise<ActionResult> {
+  await requireUser();
+  const parsed = SpecDealInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const input = parsed.data;
+
+  let companyId = await resolveCompanyId({ name: input.companyName });
+  if (!companyId) {
+    // Confirm-before-consequence: creating a new company is a deliberate step.
+    if (!input.createCompany) {
+      return {
+        ok: false,
+        needsConfirm: `"${input.companyName}" isn't in the CRM yet — create it as a prospect and log the spec-in deal?`,
+      };
+    }
+    const { data, error } = await db
+      .from("company")
+      .insert({ name: input.companyName, status: "prospect", sectors: [] })
+      .select("id")
+      .single();
+    if (error || !data) return { ok: false, error: "Could not create the company." };
+    companyId = data.id;
+  }
+
+  // Reuse the deal write path (company resolution + required next step + insert).
+  const dealRes = await upsertDeal({
+    companyName: input.companyName,
+    name: input.name,
+    stage: "lead",
+    nextStep: input.nextStep,
+  });
+  if (!dealRes.ok) return dealRes;
+
+  // Append the spec summary to the company notes (dated, append-never-clobber).
+  if (input.summary) {
+    const block = [
+      `— Spec-in: ${input.name} (${new Date().toISOString().slice(0, 10)}) —`,
+      input.summary,
+    ].join("\n");
+    await appendCompanyNotes(companyId, block);
+  }
+
+  revalidatePath("/deals");
+  revalidatePath(`/companies/${companyId}`);
+  return { ok: true, id: dealRes.id };
+}
+
+// F3 — search Apollo's people index for candidates (offered when the pool is
+// thin, available always). Display-only; each result gets an Add-person
+// affordance in the UI that runs the normal resolution flow. One explicit
+// click, one page, one credit (ADR-025).
+export type CandidateSearchResult =
+  | { ok: true; people: ApolloPerson[] }
+  | { ok: false; error: string };
+
+const CandidateSearchInput = z.object({
+  title: optional(z.string().trim().max(200)),
+  location: optional(z.string().trim().max(200)),
+  keywords: optional(z.string().trim().max(500)),
+});
+
+export async function searchApolloCandidates(raw: unknown): Promise<CandidateSearchResult> {
+  await requireUser();
+  const parsed = CandidateSearchInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Invalid input." };
+  const { title, location, keywords } = parsed.data;
+  if (!title && !location && !keywords) {
+    return { ok: false, error: "The spec has no title, location or skills to search Apollo with." };
+  }
+
+  return searchApolloPeople({
+    titles: title ? [title] : [],
+    locations: location ? [location] : [],
+    keywords: keywords ?? undefined,
+  });
 }

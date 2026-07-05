@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { ParsedCvSchema, type ParsedCv } from "@/lib/cv";
+import { ParsedJdSchema, type ParsedJd } from "@/lib/jd";
 import { db } from "@/lib/db";
 import { SECTOR_TAXONOMY, SENIORITY_LEVELS } from "@/lib/domain";
 
@@ -13,8 +14,11 @@ import { SECTOR_TAXONOMY, SENIORITY_LEVELS } from "@/lib/domain";
  * ai_usage_log — nothing unlogged, ever.
  */
 
-/** Extraction runs on Haiku — the cheapest model that does the job (ADR-024). */
-export const CV_PARSE_MODEL = "claude-haiku-4-5-20251001";
+/** Extraction runs on Haiku — the cheapest model that does the job (ADR-024).
+ *  Both structured extractions (CV and JD) share this model; the CV alias is
+ *  kept for continuity. */
+export const EXTRACTION_MODEL = "claude-haiku-4-5-20251001";
+export const CV_PARSE_MODEL = EXTRACTION_MODEL;
 
 /**
  * The single source of truth for AI cost arithmetic: USD per million tokens
@@ -83,7 +87,7 @@ async function logAiUsage(entry: {
     .from("ai_usage_log")
     .insert({
       provider: "anthropic",
-      model: CV_PARSE_MODEL,
+      model: EXTRACTION_MODEL,
       purpose: entry.purpose,
       input_tokens: entry.inputTokens,
       output_tokens: entry.outputTokens,
@@ -189,5 +193,95 @@ export async function extractCv(text: string): Promise<CvExtraction> {
       return { ok: false, error: `Claude API error (${err.status ?? "network"}) — try again shortly.` };
     }
     return { ok: false, error: "CV parsing failed unexpectedly — try again or add the person manually." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// JD extraction (R6 / Radar, product brief §12). The second structured
+// extraction beside extractCv — same model, same cost guard before, same
+// ai_usage_log entry on every path (purpose "jd_parse"). Nothing is persisted:
+// the parsed spec pre-fills the Radar page for HUMAN action, so the log row's
+// source_ref stays null (there is no artifact to reference — same tolerated
+// boundary as an abandoned CV parse, L-022).
+// ---------------------------------------------------------------------------
+
+const JD_SYSTEM_PROMPT = [
+  "You extract a structured role specification from a job advert / job description for a recruitment CRM.",
+  "Use ONLY information present in the text — never invent a company, salary, package figure, requirement or skill that is not stated. Many adverts are anonymised; if a field is absent, return null (or an empty list).",
+  "- title: the role title as written.",
+  "- company_name: the hiring company if it is explicitly identifiable in the text, else null (anonymised adverts are common — do not guess).",
+  `- seniority: the role's level on this scale: ${SENIORITY_LEVELS.join(", ")}; null if unclear.`,
+  "- location: the role's location (city/region/remote) if stated, else null.",
+  "- salary_range: the stated salary or range verbatim (e.g. '£120-150k'), else null.",
+  "- bonus / car_allowance / pension / notice_period: each package element verbatim if stated, else null.",
+  "- team: the team or department the role sits in, if stated, else null.",
+  "- functions: broad functional disciplines (e.g. commercial, engineering, finance), lowercase, max 6.",
+  "- skills: specific skills, tools and domain expertise the role calls for, lowercase, deduplicated, max 15.",
+  `- sectors: industry sectors, mapped into this taxonomy where possible: ${SECTOR_TAXONOMY.join(", ")}. A sector that genuinely fits none of these may be given verbatim, lowercase.`,
+  "- summary: a neutral 2-3 sentence summary of the role.",
+  "- requirements: the key requirements/responsibilities as short bullet strings, most important first, max 8.",
+].join("\n");
+
+export type JdExtraction =
+  | { ok: true; parsed: ParsedJd; aiLogId: string | null; warning?: string }
+  | { ok: false; error: string };
+
+/** One Claude call: job-advert text in, schema-guaranteed structured spec out.
+ *  Guard before, log after, on every path — identical discipline to extractCv. */
+export async function extractJd(text: string): Promise<JdExtraction> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: "Job-advert parsing needs the Claude API — add ANTHROPIC_API_KEY to the Vercel server environment (ADR-024), then retry.",
+    };
+  }
+
+  const budget = await checkAiBudget();
+  if (!budget.ok) return budget;
+
+  // A job advert is short; 100k chars is far beyond any genuine one. The cap
+  // bounds spend on degenerate input, nothing more.
+  const input = text.slice(0, 100_000);
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const response = await client.messages.parse({
+      model: EXTRACTION_MODEL,
+      max_tokens: 4000,
+      system: JD_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: input }],
+      output_config: { format: zodOutputFormat(ParsedJdSchema) },
+    });
+
+    const aiLogId = await logAiUsage({
+      purpose: "jd_parse",
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      costGbp: costGbp(EXTRACTION_MODEL, response.usage.input_tokens, response.usage.output_tokens),
+      sourceRef: null,
+    });
+
+    if (!response.parsed_output) {
+      return {
+        ok: false,
+        error: "The model could not produce a structured spec from this text — check it is a job advert and retry.",
+      };
+    }
+    return { ok: true, parsed: response.parsed_output, aiLogId, warning: budget.warning };
+  } catch (err) {
+    // The attempt is still logged (nothing unlogged); a failed request bills no
+    // tokens, so the row carries null tokens and zero cost.
+    await logAiUsage({
+      purpose: "jd_parse",
+      inputTokens: null,
+      outputTokens: null,
+      costGbp: 0,
+      sourceRef: null,
+    });
+    if (err instanceof Anthropic.APIError) {
+      return { ok: false, error: `Claude API error (${err.status ?? "network"}) — try again shortly.` };
+    }
+    return { ok: false, error: "Job-advert parsing failed unexpectedly — try again." };
   }
 }

@@ -32,7 +32,13 @@ type CvState = {
  * createPerson resolution path (golden rule 2) — with the CV attached and the
  * standardised-CV JSON persisted server-side on confirm.
  */
-export function AddPersonDialog() {
+export function AddPersonDialog(props?: {
+  /** Seed name/company/title (e.g. from a Radar Apollo candidate). Additive and
+   *  optional — the submit still runs the unchanged resolution path. */
+  prefill?: { fullName?: string; companyName?: string; title?: string };
+  /** Override the default trigger button (label/variant varies by context). */
+  trigger?: React.ReactElement;
+}) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [cv, setCv] = useState<CvState | null>(null);
@@ -58,12 +64,21 @@ export function AddPersonDialog() {
     return createPersonFromCv(fd);
   }
 
-  const f = useActionForm(submitAction, INITIAL, {
-    onSuccess: (res) => {
-      setCv(null);
-      if (res.id) router.push(`/people/${res.id}`);
+  const f = useActionForm(
+    submitAction,
+    {
+      ...INITIAL,
+      fullName: props?.prefill?.fullName ?? INITIAL.fullName,
+      companyName: props?.prefill?.companyName ?? INITIAL.companyName,
+      title: props?.prefill?.title ?? INITIAL.title,
     },
-  });
+    {
+      onSuccess: (res) => {
+        setCv(null);
+        if (res.id) router.push(`/people/${res.id}`);
+      },
+    },
+  );
   const ambiguous = f.result && !f.result.ok && "ambiguous" in f.result ? f.result.ambiguous : null;
   const matched = f.result && !f.result.ok && "matched" in f.result ? f.result.matched : null;
 
@@ -107,7 +122,7 @@ export function AddPersonDialog() {
 
   return (
     <FormDialog
-      trigger={<Button size="sm">Add person</Button>}
+      trigger={props?.trigger ?? <Button size="sm">Add person</Button>}
       title="Add person"
       open={f.open} onOpenChange={onOpenChange}
       error={f.error} pending={f.pending}
