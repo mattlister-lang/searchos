@@ -266,3 +266,84 @@ export async function matchPerson(ref: {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// People search (R6 / Radar, product brief §12) — POST /mixed_people/api_search
+// Display-only candidate sourcing by title/location/keywords; results are
+// shown, never persisted, and each carries an "Add person" affordance that runs
+// the normal resolution flow (nothing auto-creates). This endpoint deliberately
+// does NOT return emails/phones (Apollo reveals those only via people/match,
+// the find-email path) — so a match is pure context for the operator to decide.
+// Response shape assumed (docs truncate the example, L-030): { people: [{ id,
+// name, first_name, last_name, title, linkedin_url, city, state, country,
+// organization: { name } }] } — all optional, defensively parsed.
+// ---------------------------------------------------------------------------
+
+const ApolloPersonSchema = z.object({
+  id: z.string().nullish(),
+  name: z.string().nullish(),
+  first_name: z.string().nullish(),
+  last_name: z.string().nullish(),
+  title: z.string().nullish(),
+  linkedin_url: z.string().nullish(),
+  city: z.string().nullish(),
+  state: z.string().nullish(),
+  country: z.string().nullish(),
+  organization: z.object({ name: z.string().nullish() }).nullish(),
+});
+
+/** A normalised, camel-cased person hit — the shape the Radar list + Add-person
+ *  prefill consume. */
+export type ApolloPerson = {
+  name: string;
+  title: string | null;
+  organizationName: string | null;
+  location: string | null;
+  linkedinUrl: string | null;
+};
+
+export type PeopleSearchResult =
+  | { ok: true; people: ApolloPerson[] }
+  | { ok: false; error: string };
+
+/** Search Apollo's people index by title / location / keywords. Costs Apollo
+ *  credits per page — one explicit click, one page (per_page 10). */
+export async function searchPeople(ref: {
+  titles?: string[];
+  locations?: string[];
+  keywords?: string;
+}): Promise<PeopleSearchResult> {
+  const body: Record<string, unknown> = { per_page: 10 };
+  if (ref.titles?.length) body.person_titles = ref.titles;
+  if (ref.locations?.length) body.person_locations = ref.locations;
+  if (ref.keywords?.trim()) body.q_keywords = ref.keywords.trim();
+
+  const raw = await apolloRequest("/mixed_people/api_search", { method: "POST", body });
+  if (!raw.ok) return raw;
+
+  // Apollo has keyed people search results as "people" and (historically)
+  // "contacts" — read both, prefer whichever is populated.
+  const parsed = z
+    .object({
+      people: z.array(ApolloPersonSchema).nullish(),
+      contacts: z.array(ApolloPersonSchema).nullish(),
+    })
+    .safeParse(raw.body);
+  if (!parsed.success) {
+    return { ok: false, error: "Apollo returned people in an unexpected shape." };
+  }
+  const rows = parsed.data.people?.length ? parsed.data.people : (parsed.data.contacts ?? []);
+
+  const people: ApolloPerson[] = rows
+    .map((p) => ({
+      name: p.name ?? ([p.first_name, p.last_name].filter(Boolean).join(" ") || ""),
+      title: p.title ?? null,
+      organizationName: p.organization?.name ?? null,
+      location: [p.city, p.state, p.country].filter(Boolean).join(", ") || null,
+      linkedinUrl: p.linkedin_url ?? null,
+    }))
+    // Drop rows with no usable name — unrenderable, and Add-person needs one.
+    .filter((p) => p.name.length > 0);
+
+  return { ok: true, people };
+}

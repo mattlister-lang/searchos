@@ -374,3 +374,43 @@ allowed, bounded (`.is("apollo_org_id", null)` — set once, append never clobbe
 and commented at both write sites naming ADR-025 §4, so the boundary is explicit:
 cache non-personal keys freely; personal data still waits for confirm. → actions.ts
 (fetchCompanyEnrichment + resolveApolloOrgId comments); this register.
+
+**L-033 · 2026-07-05 · The company-notes append reached its third site — extract, don't copy.**
+R6/F3 (Log BD deal from a Radar spec) needed to append the spec summary to the
+company notes — the SAME fetch-notes → prepend-with-`\n\n` → slice-5000 → update
+that `applyCompanyEnrichment` (Apollo enrichment) and `appendCompanyNews`
+already hand-rolled. A third copy is a defect (engineering.md §3, L-003). →
+Two identical copies had sat unextracted since R5 because a second occurrence is
+only "allowed"; the third forces the rule. → Extracted `appendCompanyNotes(companyId,
+block)` — one owner of fetch+append+write+budget — and refactored both existing
+sites onto it (callers still build their own dated block); no behaviour change,
+one definition. → actions.ts (`appendCompanyNotes` + the two refactors); this
+register.
+
+**L-034 · 2026-07-05 · A stateless AI feature logs with `source_ref` permanently null — that is the contract, not a gap.**
+R6's `extractJd` logs every Claude call to `ai_usage_log` (ADR-024), but the
+Radar page is stateless by design — the parsed spec pre-fills the page and is
+NEVER persisted (no document, no row is ever created from it). So the log row's
+`source_ref` starts null and is never backfilled, unlike a CV parse
+(`linkAiLogToDocument`, L-022). → A reader who knows the CV backfill could see
+the missing link as a bug and "fix" it by inventing an artifact to point at —
+exactly the orphan-record trap L-022 warns against. → When an AI call has no
+persisted subject, log it with `source_ref` null and leave it null; the
+invariant is "nothing unlogged", not "everything referenced". Backfill only
+exists where an artifact is actually born. → `lib/ai.ts` extractJd comment names
+the tolerated null; this register.
+
+**L-035 · 2026-07-05 · Apollo people-search returns no emails and a docs-truncated response — model it defensively, read both keys.**
+R6's Apollo candidate search uses `POST /mixed_people/api_search` with
+`person_titles[]`/`person_locations[]`/`q_keywords`/`per_page`. Two shape
+unknowns: (1) the endpoint deliberately returns NO emails/phones (those come
+only from people/match — the find-email path), so a result is pure display
+context, never a write source; (2) the docs truncate the 200 example (L-030
+again), and Apollo has historically keyed the array as both `people` and
+`contacts`. → Guessing one key and one field set would silently yield "nothing
+found" (a renamed field parses to null, not an error). → Modelled every field
+optional (L-030 discipline), read `people` then fall back to `contacts`, and
+kept the search display-only with the Add-person affordance running the normal
+resolution flow (nothing auto-creates, ADR-025). Assumptions written in the ship
+report to re-verify against a live 200. → `lib/apollo.ts` `searchPeople` schema +
+comment; this register.

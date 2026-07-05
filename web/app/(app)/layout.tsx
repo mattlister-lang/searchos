@@ -12,6 +12,7 @@ const NAV = [
   { href: "/people", label: "People" },
   { href: "/billings", label: "Billings" },
   { href: "/reports", label: "Reports" },
+  { href: "/radar", label: "Radar" },
 ];
 
 export default async function AppLayout({

@@ -14,15 +14,31 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-export function NewMandateDialog() {
+export function NewMandateDialog(props?: {
+  /** Seed a new job's fields (e.g. from a Radar spec). All optional and
+   *  additive — the company is still chosen/confirmed in the dialog. */
+  prefill?: {
+    companyName?: string;
+    title?: string;
+    brief?: string;
+    seniority?: string;
+    location?: string;
+    salaryRange?: string;
+    skills?: string[];
+  };
+  /** Override the default trigger button (label/variant varies by context). */
+  trigger?: React.ReactElement;
+}) {
+  const p = props?.prefill;
   const f = useActionForm(createMandate, {
-    companyName: "", title: "", brief: "",
-    seniority: "", location: "", salaryRange: "", skills: [] as string[],
+    companyName: p?.companyName ?? "", title: p?.title ?? "", brief: p?.brief ?? "",
+    seniority: p?.seniority ?? "", location: p?.location ?? "", salaryRange: p?.salaryRange ?? "",
+    skills: (p?.skills ?? []) as string[],
   });
 
   return (
     <FormDialog
-      trigger={<Button size="sm">New job</Button>}
+      trigger={props?.trigger ?? <Button size="sm">New job</Button>}
       title="New job (mandate)"
       open={f.open} onOpenChange={f.onOpenChange}
       error={f.error} pending={f.pending}
