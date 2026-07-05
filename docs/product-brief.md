@@ -265,3 +265,30 @@ agreed in conversation; each lands via the engineering.md workflow.
   career pages/ATS feeds only; unattended runs would also reopen ADR-018.
   The guiding star, verbatim: *"if it can save me time and make me more
   money, I will be over the moon."*
+
+## 12. The spec-in radar (Matt, 4 Jul 2026) — value-first BD
+
+The insight, from live competitor research: a competitor's anonymised advert
+was traced to Siemens by googling title + location. Watching who competitors
+are recruiting for reveals live demand — and the winning move is to SPEC IN:
+open the conversation by bringing the prospect a great candidate, not by
+asking for anything. "I'm delivering value to them… this is the best way to
+make money fast and build client relationships."
+
+**R6 — the Radar page (JD in → spec out → matches → action):**
+- Paste (or drop a file of) ANY job advert → cheap AI extraction (Haiku,
+  purpose `jd_parse`, under the ADR-024 caps + logging) → a standardised
+  role spec: title, seniority, location, salary/package hints, team,
+  functions, skills, sectors, summary.
+- The spec immediately searches OUR OWN pool first (search_people_boolean
+  over the extracted terms) — ranked matches with links.
+- Actions from the same page: **Create job** (mandate prefilled with the
+  0010 brief fields + skills — the "drop a JD, get a standardised brief"
+  flow for real briefings too), **Log BD deal** (company resolved/created
+  → deal at lead with the spec appended to company notes), or — when the
+  pool comes up thin, the page offers it — **Search Apollo for candidates**
+  (people search by title/location/keywords; results are display-only, each
+  with an Add-person affordance that runs the normal resolution flow).
+- Nothing auto-creates; every write is the existing confirm-gated path.
+  Sourcing stays manual and human (Matt talks to people) — the system finds,
+  Matt calls. LinkedIn research stays manual (ADR-009 untouched).
