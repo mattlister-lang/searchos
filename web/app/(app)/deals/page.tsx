@@ -108,7 +108,13 @@ export default async function Deals({
                 const w = weightFor(d.stage);
                 return (
                   <TableRow key={d.deal_id}>
-                    <TableCell className="font-medium">{d.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {d.deal_id ? (
+                        <Link href={`/deals/${d.deal_id}`} className="hover:underline">
+                          {d.name}
+                        </Link>
+                      ) : d.name}
+                    </TableCell>
                     <TableCell>
                       {d.company_id ? (
                         <Link href={`/companies/${d.company_id}`} className="hover:underline">
@@ -142,15 +148,14 @@ export default async function Deals({
                     <TableCell className="text-right text-muted-foreground">
                       {fmtDate(d.updated_at)}
                     </TableCell>
+                    {/* Working a deal happens on its page (E-001), not in a
+                        list-row dialog — the list stays the commercial forecast. */}
                     <TableCell className="text-right">
                       {d.deal_id && (
-                        <DealDialog deal={{
-                          deal_id: d.deal_id,
-                          name: d.name ?? "",
-                          stage: d.stage ?? "lead",
-                          value: d.value,
-                          next_step: d.next_step,
-                        }} />
+                        <Link href={`/deals/${d.deal_id}`}
+                          className="text-xs font-medium text-primary hover:underline">
+                          Open →
+                        </Link>
                       )}
                     </TableCell>
                   </TableRow>
@@ -167,11 +172,19 @@ export default async function Deals({
             <CardTitle className="text-base">Won / lost</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {closed.map((d) => (
-              <Badge key={d.deal_id} variant="outline" className="capitalize">
-                {d.name} — {d.stage}
-              </Badge>
-            ))}
+            {closed.map((d) =>
+              d.deal_id ? (
+                <Link key={d.deal_id} href={`/deals/${d.deal_id}`}>
+                  <Badge variant="outline" className="capitalize">
+                    {d.name} — {d.stage}
+                  </Badge>
+                </Link>
+              ) : (
+                <Badge key={d.name} variant="outline" className="capitalize">
+                  {d.name} — {d.stage}
+                </Badge>
+              ),
+            )}
           </CardContent>
         </Card>
       )}

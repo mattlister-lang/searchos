@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Database } from "@/lib/database.types";
 import { db } from "@/lib/db";
 import { label } from "@/lib/domain";
 import { fmtDate } from "@/lib/format";
@@ -25,6 +26,44 @@ const REASON_LABEL: Record<string, string> = {
   candidacy_stalled: "Stalled",
   relationship_going_stale: "Going stale",
 };
+
+type NextActionRow = Database["public"]["Views"]["v_next_actions"]["Row"];
+
+/**
+ * E-002: every next-action row is one click from acting. The 0012 view carries
+ * (target_type + ids); deal rows open the deal, candidacy rows open the JOB
+ * (where the kanban action is) with the candidate's name linking their page —
+ * the view formats a candidacy item as "name — title", so split on the first
+ * separator; if the shape ever surprises, the whole item links to the job.
+ * Person rows open the person. Missing ids degrade to plain text (L-015).
+ */
+function NextActionWhat({ a }: { a: NextActionRow }) {
+  const item = a.item ?? "—";
+  if (a.target_type === "deal" && a.deal_id) {
+    return <Link href={`/deals/${a.deal_id}`} className="hover:underline">{item}</Link>;
+  }
+  if (a.target_type === "candidacy" && a.mandate_id) {
+    const sep = item.indexOf(" — ");
+    if (sep === -1) {
+      return <Link href={`/jobs/${a.mandate_id}`} className="hover:underline">{item}</Link>;
+    }
+    const name = item.slice(0, sep);
+    const rest = item.slice(sep + 3);
+    return (
+      <span>
+        {a.person_id ? (
+          <Link href={`/people/${a.person_id}`} className="hover:underline">{name}</Link>
+        ) : name}
+        {" — "}
+        <Link href={`/jobs/${a.mandate_id}`} className="hover:underline">{rest}</Link>
+      </span>
+    );
+  }
+  if (a.target_type === "person" && a.person_id) {
+    return <Link href={`/people/${a.person_id}`} className="hover:underline">{item}</Link>;
+  }
+  return <span>{item}</span>;
+}
 
 export default async function Dashboard() {
   const [people, deals, candidacies, actions, pulse, interviews, stale] = await Promise.all([
@@ -92,9 +131,15 @@ export default async function Dashboard() {
                         {REASON_LABEL[a.reason ?? ""] ?? a.reason}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{a.item}</TableCell>
+                    <TableCell className="font-medium">
+                      <NextActionWhat a={a} />
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {a.context ?? "—"}
+                      {a.company_id && a.context ? (
+                        <Link href={`/companies/${a.company_id}`} className="hover:underline">
+                          {a.context}
+                        </Link>
+                      ) : (a.context ?? "—")}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">
                       {fmtDate(a.since)}
@@ -192,9 +237,25 @@ export default async function Dashboard() {
                 {(interviews.data ?? []).map((iv) => (
                   <TableRow key={iv.interview_id}>
                     <TableCell className="tabular-nums">{fmtDate(iv.scheduled_at)}</TableCell>
-                    <TableCell className="font-medium">{iv.candidate}</TableCell>
+                    <TableCell className="font-medium">
+                      {iv.person_id ? (
+                        <Link href={`/people/${iv.person_id}`} className="hover:underline">
+                          {iv.candidate}
+                        </Link>
+                      ) : iv.candidate}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {iv.mandate} · {iv.client}
+                      {iv.mandate_id ? (
+                        <Link href={`/jobs/${iv.mandate_id}`} className="hover:underline">
+                          {iv.mandate}
+                        </Link>
+                      ) : iv.mandate}
+                      {" · "}
+                      {iv.company_id ? (
+                        <Link href={`/companies/${iv.company_id}`} className="hover:underline">
+                          {iv.client}
+                        </Link>
+                      ) : iv.client}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {iv.round} <span className="capitalize text-muted-foreground">({String(iv.kind).replaceAll("_", " ")})</span>
@@ -227,7 +288,13 @@ export default async function Dashboard() {
                 const prior = p.prior_30d ?? 0;
                 return (
                 <TableRow key={p.company_id}>
-                  <TableCell className="font-medium">{p.company}</TableCell>
+                  <TableCell className="font-medium">
+                    {p.company_id ? (
+                      <Link href={`/companies/${p.company_id}`} className="hover:underline">
+                        {p.company}
+                      </Link>
+                    ) : p.company}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">{last}</TableCell>
                   <TableCell className="text-right tabular-nums">{prior}</TableCell>
                   <TableCell className="text-right">

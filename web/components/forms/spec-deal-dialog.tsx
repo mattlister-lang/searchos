@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { logSpecDeal } from "@/lib/actions";
 import { useActionForm } from "@/lib/use-action-form";
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,18 @@ export function SpecDealDialog(props: {
   summary: string;
   trigger?: React.ReactElement;
 }) {
-  const f = useActionForm(logSpecDeal, {
-    companyName: props.companyName ?? "",
-    name: `Spec-in: ${props.title}`,
-    nextStep: "",
-    summary: props.summary,
-  });
+  const router = useRouter();
+  const f = useActionForm(
+    logSpecDeal,
+    {
+      companyName: props.companyName ?? "",
+      name: `Spec-in: ${props.title}`,
+      nextStep: "",
+      summary: props.summary,
+    },
+    // Part B: land on the created deal — its page is where it gets worked.
+    { onSuccess: (res) => { if (res.id) router.push(`/deals/${res.id}`); } },
+  );
 
   const needsConfirm =
     f.result && !f.result.ok && "needsConfirm" in f.result ? f.result.needsConfirm : null;

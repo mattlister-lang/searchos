@@ -96,6 +96,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "activity_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "activity_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -135,6 +142,13 @@ export type Database = {
             columns: ["mandate_id"]
             isOneToOne: false
             referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["mandate_id"]
+          },
+          {
+            foreignKeyName: "activity_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["mandate_id"]
           },
         ]
@@ -210,6 +224,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "activity_participant_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -368,6 +389,13 @@ export type Database = {
             referencedColumns: ["mandate_id"]
           },
           {
+            foreignKeyName: "candidacy_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["mandate_id"]
+          },
+          {
             foreignKeyName: "candidacy_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
@@ -414,6 +442,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "candidacy_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -473,6 +508,13 @@ export type Database = {
             columns: ["candidacy_id"]
             isOneToOne: false
             referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["candidacy_id"]
+          },
+          {
+            foreignKeyName: "candidacy_feedback_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["candidacy_id"]
           },
         ]
@@ -559,6 +601,13 @@ export type Database = {
             columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "company_domain_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["company_id"]
           },
         ]
@@ -669,6 +718,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "deal_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "deal_primary_contact_id_fkey"
             columns: ["primary_contact_id"]
             isOneToOne: false
@@ -715,6 +771,13 @@ export type Database = {
             columns: ["primary_contact_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "deal_primary_contact_id_fkey"
+            columns: ["primary_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -798,6 +861,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "document_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "document_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -837,6 +907,13 @@ export type Database = {
             columns: ["mandate_id"]
             isOneToOne: false
             referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["mandate_id"]
+          },
+          {
+            foreignKeyName: "document_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["mandate_id"]
           },
           {
@@ -886,6 +963,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "document_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -954,6 +1038,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "employment_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "employment_person_id_fkey"
             columns: ["person_id"]
             isOneToOne: false
@@ -1000,6 +1091,13 @@ export type Database = {
             columns: ["person_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "employment_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -1124,6 +1222,13 @@ export type Database = {
             referencedRelation: "v_stale_candidacies"
             referencedColumns: ["candidacy_id"]
           },
+          {
+            foreignKeyName: "interview_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["candidacy_id"]
+          },
         ]
       }
       invoice: {
@@ -1190,6 +1295,13 @@ export type Database = {
             columns: ["candidacy_id"]
             isOneToOne: false
             referencedRelation: "v_stale_candidacies"
+            referencedColumns: ["candidacy_id"]
+          },
+          {
+            foreignKeyName: "invoice_candidacy_id_fkey"
+            columns: ["candidacy_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["candidacy_id"]
           },
         ]
@@ -1303,6 +1415,13 @@ export type Database = {
             referencedColumns: ["company_id"]
           },
           {
+            foreignKeyName: "mandate_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["company_id"]
+          },
+          {
             foreignKeyName: "mandate_deal_id_fkey"
             columns: ["deal_id"]
             isOneToOne: false
@@ -1363,6 +1482,13 @@ export type Database = {
             columns: ["hiring_manager_id"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "mandate_hiring_manager_id_fkey"
+            columns: ["hiring_manager_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -1476,6 +1602,13 @@ export type Database = {
             referencedColumns: ["person_id"]
           },
           {
+            foreignKeyName: "merge_queue_person_a_fkey"
+            columns: ["person_a"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["person_id"]
+          },
+          {
             foreignKeyName: "merge_queue_person_b_fkey"
             columns: ["person_b"]
             isOneToOne: false
@@ -1522,6 +1655,13 @@ export type Database = {
             columns: ["person_b"]
             isOneToOne: false
             referencedRelation: "v_statutory_purge"
+            referencedColumns: ["person_id"]
+          },
+          {
+            foreignKeyName: "merge_queue_person_b_fkey"
+            columns: ["person_b"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
             referencedColumns: ["person_id"]
           },
         ]
@@ -1652,6 +1792,13 @@ export type Database = {
             referencedRelation: "v_statutory_purge"
             referencedColumns: ["person_id"]
           },
+          {
+            foreignKeyName: "person_email_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["person_id"]
+          },
         ]
       }
       suppression_list: {
@@ -1730,10 +1877,16 @@ export type Database = {
       }
       v_next_actions: {
         Row: {
+          candidacy_id: string | null
+          company_id: string | null
           context: string | null
+          deal_id: string | null
           item: string | null
+          mandate_id: string | null
+          person_id: string | null
           reason: string | null
           since: string | null
+          target_type: string | null
         }
         Relationships: []
       }
@@ -1840,16 +1993,27 @@ export type Database = {
             referencedRelation: "v_stale_candidacies"
             referencedColumns: ["mandate_id"]
           },
+          {
+            foreignKeyName: "candidacy_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "v_upcoming_interviews"
+            referencedColumns: ["mandate_id"]
+          },
         ]
       }
       v_upcoming_interviews: {
         Row: {
+          candidacy_id: string | null
           candidate: string | null
           client: string | null
+          company_id: string | null
           consultant: string | null
           interview_id: string | null
           kind: Database["public"]["Enums"]["interview_kind"] | null
           mandate: string | null
+          mandate_id: string | null
+          person_id: string | null
           round: number | null
           scheduled_at: string | null
         }

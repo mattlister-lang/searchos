@@ -1,12 +1,17 @@
 "use client";
 
-import { addCandidacy, createMandate, moveStage, setMandateStatus } from "@/lib/actions";
+import { useRouter } from "next/navigation";
+import {
+  addCandidacy, createMandate, createMandateWithJd, moveStage, setMandateStatus,
+  type ActionResult,
+} from "@/lib/actions";
 import { CANDIDACY_STAGES, label, MANDATE_STATUSES } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
 import { useConfirmableAction } from "@/lib/use-confirm-action";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/forms/confirm-dialog";
 import { FormDialog, Field, TextField } from "@/components/forms/form-dialog";
+import { MandatePicker } from "@/components/forms/mandate-picker";
 import { PersonPicker } from "@/components/forms/person-picker";
 import { TagInput } from "@/components/forms/tag-input";
 import {
@@ -26,15 +31,40 @@ export function NewMandateDialog(props?: {
     salaryRange?: string;
     skills?: string[];
   };
+  /** Convert-deal flow (E-009): sets mandate.deal_id on create so the job
+   *  keeps its BD lineage. */
+  dealId?: string;
+  /** Radar JD carry (E-B1): the analysed file, attached to the new job as its
+   *  spec on the same confirm. */
+  jdFile?: File | null;
   /** Override the default trigger button (label/variant varies by context). */
   trigger?: React.ReactElement;
 }) {
+  const router = useRouter();
   const p = props?.prefill;
-  const f = useActionForm(createMandate, {
-    companyName: p?.companyName ?? "", title: p?.title ?? "", brief: p?.brief ?? "",
-    seniority: p?.seniority ?? "", location: p?.location ?? "", salaryRange: p?.salaryRange ?? "",
-    skills: (p?.skills ?? []) as string[],
-  });
+  const jdFile = props?.jdFile ?? null;
+
+  // A File can't ride the plain-object payload (L-023): when a JD is carried,
+  // the SAME form submits via FormData to createMandateWithJd. One form
+  // machine, transport switched in the closure (the AddPersonDialog pattern).
+  async function submitAction(input: unknown): Promise<ActionResult> {
+    if (!jdFile) return createMandate(input);
+    const fd = new FormData();
+    fd.set("file", jdFile);
+    fd.set("payload", JSON.stringify(input as Record<string, unknown>));
+    return createMandateWithJd(fd);
+  }
+
+  const f = useActionForm(
+    submitAction,
+    {
+      companyName: p?.companyName ?? "", title: p?.title ?? "", brief: p?.brief ?? "",
+      seniority: p?.seniority ?? "", location: p?.location ?? "", salaryRange: p?.salaryRange ?? "",
+      skills: (p?.skills ?? []) as string[],
+    },
+    // Part B: a create lands on the thing created.
+    { onSuccess: (res) => { if (res.id) router.push(`/jobs/${res.id}`); } },
+  );
 
   return (
     <FormDialog
@@ -43,7 +73,7 @@ export function NewMandateDialog(props?: {
       open={f.open} onOpenChange={f.onOpenChange}
       error={f.error} pending={f.pending}
       submitLabel="Open mandate" pendingLabel="Creating…"
-      onSubmit={() => f.submit()}
+      onSubmit={() => f.submit({ dealId: props?.dealId })}
     >
       <TextField label="Client company (must already exist)" value={f.form.companyName}
         onChange={f.setField("companyName")} />
@@ -63,46 +93,68 @@ export function NewMandateDialog(props?: {
         <TagInput field="skills" value={f.form.skills} onChange={f.set("skills")}
           placeholder="ppa, origination…" />
       </Field>
+      {jdFile && (
+        <p className="text-xs text-muted-foreground">
+          The analysed JD “{jdFile.name}” will be attached to the job as its spec.
+        </p>
+      )}
     </FormDialog>
   );
 }
 
 export function AddCandidacyDialog(props: {
-  mandates: { id: string; title: string }[];
+  mandates?: { id: string; title: string }[];
   fixedMandateId?: string;
+  /** Person-page mode (E-022 "Add to job"): the person is fixed and the job
+   *  is picked by typeahead — no leave-and-re-search round trip. */
+  fixedPersonId?: string;
+  personName?: string;
 }) {
+  const personFixed = !!props.fixedPersonId;
   const f = useActionForm(addCandidacy, {
-    personId: "",
+    personId: props.fixedPersonId ?? "",
     mandateId: props.fixedMandateId ?? "",
   });
 
   return (
     <FormDialog
-      trigger={<Button variant="outline" size="sm">Add candidate</Button>}
-      title="Add candidate to mandate"
+      trigger={
+        <Button variant="outline" size="sm">
+          {personFixed ? "Add to job" : "Add candidate"}
+        </Button>
+      }
+      title={personFixed
+        ? `Add ${props.personName ?? "candidate"} to a job`
+        : "Add candidate to mandate"}
       open={f.open} onOpenChange={f.onOpenChange}
       error={f.error} pending={f.pending}
       submitLabel="Add at identified" pendingLabel="Adding…"
       onSubmit={() => f.submit()}
       submitDisabled={!f.form.personId || !f.form.mandateId}
     >
-      <Field label="Candidate">
-        <PersonPicker
-          value={f.form.personId}
-          onChange={f.set("personId")}
-          placeholder="Search people by name…"
-        />
-      </Field>
-      {!props.fixedMandateId && (
+      {!personFixed && (
+        <Field label="Candidate">
+          <PersonPicker
+            value={f.form.personId}
+            onChange={f.set("personId")}
+            placeholder="Search people by name…"
+          />
+        </Field>
+      )}
+      {personFixed ? (
+        <Field label="Job">
+          <MandatePicker value={f.form.mandateId} onChange={f.set("mandateId")} />
+        </Field>
+      ) : !props.fixedMandateId && (
         <Field label="Mandate">
           <Select value={f.form.mandateId} onValueChange={(v) => v && f.set("mandateId")(v)}>
             <SelectTrigger>
               <SelectValue placeholder="Pick a mandate">
-                {props.mandates.find((m) => m.id === f.form.mandateId)?.title ?? null}
+                {(props.mandates ?? []).find((m) => m.id === f.form.mandateId)?.title ?? null}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {props.mandates.map((m) => (
+              {(props.mandates ?? []).map((m) => (
                 <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
               ))}
             </SelectContent>

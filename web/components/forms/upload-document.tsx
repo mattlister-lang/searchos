@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 
 /**
  * The one hidden-file-input upload control (engineering.md §3 — was UploadCv;
- * R4/F3 generalised it when the JD upload became its second use). Target is a
- * person (CVs) or a mandate (JD/spec); the uploadDocument action routes the
- * file to the right Storage prefix and document row.
+ * R4/F3 generalised it when the JD upload became its second use; R7 adds the
+ * deal target for proposals/terms on the deal page). Target is a person (CVs),
+ * a mandate (JD/spec) or a deal; the uploadDocument action routes the file to
+ * the right Storage prefix and document row.
  */
 export function UploadDocument(props: {
-  target: { personId: string } | { mandateId: string };
+  target: { personId: string } | { mandateId: string } | { dealId: string };
   kind: "cv" | "spec" | "terms" | "other";
   label: string;
 }) {
@@ -29,7 +30,8 @@ export function UploadDocument(props: {
     const fd = new FormData();
     fd.set("file", file);
     if ("personId" in props.target) fd.set("personId", props.target.personId);
-    else fd.set("mandateId", props.target.mandateId);
+    else if ("mandateId" in props.target) fd.set("mandateId", props.target.mandateId);
+    else fd.set("dealId", props.target.dealId);
     fd.set("kind", props.kind);
     const res = await uploadDocument(fd);
     setPending(false);

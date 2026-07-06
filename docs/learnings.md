@@ -433,3 +433,23 @@ is write-only") and its edge-case register (E-005/E-006/E-007); the R7 backlog
 (product-brief.md §13) carries the fixes. Enforcement: a new capture field is not
 "done" until a page renders it — add to the DoD reuse check when these ship.
 (No code changed in this audit; deliverables are docs/ux.md + brief §13.)
+
+**L-037 · 2026-07-06 · PostgREST select strings only fail at request time — and
+the anon key + RLS-no-policies makes prod a free, auth-less linter for them.**
+R7's new pages lean on relationship embeds the build cannot exercise (the deal
+page's `primary_contact:primary_contact_id(...)` and its REVERSE embed
+`mandate(...)` via mandate.deal_id). `next build` + the typed client validate
+them against database.types.ts, but PostgREST parses the string at request
+time, and every page sits behind auth middleware — so L-025's "load the changed
+routes" check can only happen post-deploy, with a session. → The uncovered gap:
+a select valid against the generated types but wrong against live prod (drift,
+a missing FK for a reverse embed) surfaces only in production. → Because
+SearchOS runs RLS-on/no-policies (0003), the PUBLIC anon key can execute any
+select shape: rows come back empty (RLS), but a bad embed/column still returns
+a PostgREST error — so every new/changed select string can be run verbatim
+against the live project BEFORE deploy, proving parse + relationship resolution
+with zero data exposure and zero credentials beyond the anon key. → All nine
+R7 selects were verified this way (scratchpad script, anon client, live
+project) before hand-off. Enforcement: this register — when a round adds or
+changes typed-client select strings (especially embeds), run them via the anon
+client against prod as the pre-deploy leg of the L-025 route-load check.

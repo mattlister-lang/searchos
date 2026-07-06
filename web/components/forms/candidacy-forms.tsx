@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { logInterview, recordOffer, setInterviewOutcome } from "@/lib/actions";
 import { INTERVIEW_KINDS, INTERVIEW_OUTCOMES, label } from "@/lib/domain";
 import { useActionForm } from "@/lib/use-action-form";
@@ -69,36 +71,49 @@ export function OfferDialog(props: {
   candidateName: string;
   mandateTitle: string;
 }) {
-  const f = useActionForm(recordOffer, {
-    salary: "", feeAmount: "", offerAcceptedAt: "", startDate: "", board: false,
-  });
+  // E-007: saving an offer must visibly land somewhere. The dialog closes on
+  // success, so a small affordance appears beside the trigger linking the
+  // sales board (the refreshed page also renders the figures on the candidacy).
+  const [saved, setSaved] = useState(false);
+  const f = useActionForm(
+    recordOffer,
+    { salary: "", feeAmount: "", offerAcceptedAt: "", startDate: "", board: false },
+    { onSuccess: () => setSaved(true) },
+  );
 
   return (
-    <FormDialog
-      trigger={<Button variant="outline" size="sm">Offer</Button>}
-      title={`Offer — ${props.candidateName} · ${props.mandateTitle}`}
-      open={f.open} onOpenChange={f.onOpenChange}
-      error={f.error} pending={f.pending}
-      submitLabel={f.form.board ? "Save & board fee" : "Save offer details"}
-      onSubmit={() => f.submit({ candidacyId: props.candidacyId })}
-    >
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Salary (£)" type="number" value={f.form.salary}
-          onChange={f.setField("salary")} />
-        <TextField label="Fee (£)" type="number" value={f.form.feeAmount}
-          onChange={f.setField("feeAmount")} />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Offer accepted" type="date" value={f.form.offerAcceptedAt}
-          onChange={f.setField("offerAcceptedAt")} />
-        <TextField label="Start date" type="date" value={f.form.startDate}
-          onChange={f.setField("startDate")} />
-      </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={f.form.board}
-          onChange={(e) => f.set("board")(e.target.checked)} />
-        Board this fee (requires accepted offer + start date)
-      </label>
-    </FormDialog>
+    <>
+      <FormDialog
+        trigger={<Button variant="outline" size="sm">Offer</Button>}
+        title={`Offer — ${props.candidateName} · ${props.mandateTitle}`}
+        open={f.open} onOpenChange={f.onOpenChange}
+        error={f.error} pending={f.pending}
+        submitLabel={f.form.board ? "Save & board fee" : "Save offer details"}
+        onSubmit={() => f.submit({ candidacyId: props.candidacyId })}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <TextField label="Salary (£)" type="number" value={f.form.salary}
+            onChange={f.setField("salary")} />
+          <TextField label="Fee (£)" type="number" value={f.form.feeAmount}
+            onChange={f.setField("feeAmount")} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <TextField label="Offer accepted" type="date" value={f.form.offerAcceptedAt}
+            onChange={f.setField("offerAcceptedAt")} />
+          <TextField label="Start date" type="date" value={f.form.startDate}
+            onChange={f.setField("startDate")} />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={f.form.board}
+            onChange={(e) => f.set("board")(e.target.checked)} />
+          Board this fee (requires accepted offer + start date)
+        </label>
+      </FormDialog>
+      {saved && (
+        <Link href="/billings" className="text-xs font-medium text-primary hover:underline">
+          Saved — on the sales board →
+        </Link>
+      )}
+    </>
   );
 }
