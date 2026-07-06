@@ -414,3 +414,22 @@ kept the search display-only with the Add-person affordance running the normal
 resolution flow (nothing auto-creates, ADR-025). Assumptions written in the ship
 report to re-verify against a live 200. → `lib/apollo.ts` `searchPeople` schema +
 comment; this register.
+
+**L-036 · 2026-07-06 · Three independent features store data the UI never renders
+back — a "write-only capture" defect class the IA rule didn't name.**
+The holistic UX audit (docs/ux.md) surfaced that `logActivity` (`body_raw`),
+`logInterview` (`notes`/`location`), `setInterviewOutcome` (`feedback`) and
+`recordOffer` (salary/fee/dates) all persist operator-typed data that no page
+ever displays — the note you type when logging a call, the interview feedback,
+the offer figures, all vanish from every view after save. Each feature was built
+"capture-complete" (the write works, the audit trail works) but not
+"recall-complete", and three of them landed this way independently, so it is a
+pattern, not a one-off. → engineering.md §4 mandates "every entity a page, every
+reference a link" but never says the inverse: *everything the operator can type
+must render back somewhere*. A field with a write path and no read path is a
+data-entry tax with no payoff — the exact opposite of the brief's "zero-friction,
+save-me-time" bar. → The rule now lives in docs/ux.md Part A ("Nothing captured
+is write-only") and its edge-case register (E-005/E-006/E-007); the R7 backlog
+(product-brief.md §13) carries the fixes. Enforcement: a new capture field is not
+"done" until a page renders it — add to the DoD reuse check when these ship.
+(No code changed in this audit; deliverables are docs/ux.md + brief §13.)

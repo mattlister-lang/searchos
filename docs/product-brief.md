@@ -292,3 +292,126 @@ make money fast and build client relationships."
 - Nothing auto-creates; every write is the existing confirm-gated path.
   Sourcing stays manual and human (Matt talks to people) — the system finds,
   Matt calls. LinkedIn research stays manual (ADR-009 untouched).
+
+## 13. Holistic UX audit — the workflow-completeness backlog (6 Jul 2026)
+
+Matt's verdict on the working app: *"Works great. Except you need to think more
+holistically about the experience of me using this commercially. Think about
+expandable pages for each thing, think edge cases, think the user flow and
+workflow of each task."* The full audit is **`docs/ux.md` (The Experience
+Contract)** — the page model, the six workflow journeys (current→target→delta),
+and the numbered edge-case register (`E-001…E-025`) this backlog draws from.
+Ranking lens, verbatim: *"if it can save me time and make me more money, I will
+be over the moon."* One operator; boring beats clever; no speculative features.
+
+Three rounds, each shippable in the engineering.md workflow. **Schema needs are
+flagged in bold — every migration needs Matt's deploy approval (golden rule 3).**
+
+### R7 — the workflow spine (missing pages · navigation-after-action · worst friction)
+
+The gaps that make a commercial task feel unfinished. Highest value; mostly no
+schema.
+
+- **The deal page — `/deals/[id]`.** The single worst IA gap: deals have no page,
+  so every deal reference in the app (deals list, company page, search, header
+  typeahead, job-page BD badge) points at the `/deals` list, and a deal is
+  "worked" through a list-row edit dialog. The page shows stage/value/win%, the
+  company + primary contact, next step, notes, the deal's own BD activity log,
+  documents, and the linked job once converted. *Journey A; E-001 (L-004
+  violation).* **Size: L. No schema** (all columns exist).
+- **Log BD activity against a deal.** `LogActivityDialog` already supports a
+  `dealId` but is never rendered in any deal context — BD calls can only attach
+  to the company, disconnected from the deal. Wire it onto the deal page. *Journey
+  A; E-001.* **Size: S. No schema.**
+- **Deal contact + notes in the UI.** `DealDialog` has no contact and no notes
+  field; `v_deal_board` shows a `primary_contact` nothing can set; `upsertDeal`
+  already accepts `notes`. Add a PersonPicker contact + notes. *Journey A; E-008.*
+  **Size: S. No schema.**
+- **Convert deal → job.** `mandate.deal_id` exists but nothing sets it, so the
+  brief's "one continuous job lifecycle" (§2) is unreachable. "Convert to job" on
+  a won deal → `createMandate` with `deal_id`, land on the job. *Journeys A/B;
+  E-009.* **Size: M.** `createMandate` gains an optional `dealId`; **no schema.**
+- **Navigate to the thing you created.** Create-deal, create-job, create-company,
+  and Log-BD-deal all close into a silent refresh instead of opening the new
+  entity (only Add-person navigates). Use the `onSuccess` hook the form machine
+  already carries. *All journeys; Part B.* **Size: S. No schema.**
+- **Render interview & offer data back.** Interview `notes`/`location`/`feedback`
+  and offer `salary`/`fee`/dates/boarded state are stored and never shown on the
+  candidacy. Recall is non-negotiable. *Journeys C/D; E-006, E-007.* **Size: M.
+  No schema.**
+- **Render logged activity bodies.** `body_raw` (the note typed when logging a
+  call) is never displayed anywhere — the highest-frequency capture in the app is
+  write-only. Show it (inline/expandable). *Journey C/E; E-005.* **Size: S. No
+  schema.**
+- **Make the dashboard's Next actions actionable.** `v_next_actions` returns text
+  with no ids, so the morning to-do is unclickable. Give it `(target_type,
+  target_id)` and link every row (as `v_stale_candidacies` already does). *Journey
+  E; E-002.* **Size: M.** **Schema: a view change (recreate `v_next_actions`).**
+- **"Add to job" from the person page.** Removes the leave-and-re-search round
+  trip when longlisting the person you're looking at. *Journey C; E-022.* **Size:
+  S. No schema.**
+- **Carry the Radar JD onto the created job.** The file analysed on Radar isn't
+  attached to the new mandate — the operator re-uploads it. Persist it on the same
+  confirm. *Journey B; E-B1 (ux.md delta).* **Size: M. No schema.**
+
+### R8 — edge-case hardening (pagination · partial-failure · empty/long/reversal states)
+
+The correctness and robustness layer. Where the app quietly does the wrong thing.
+
+- **Paginate the people list.** Silent truncation at `.limit(200)` hides people as
+  the pool grows — a correctness bug. Pagination (or count + "showing 200 of N").
+  *E-003.* **Size: M. No schema.**
+- **Companies list empty state + bound.** No `length===0` branch, no `.limit()`.
+  *E-004.* **Size: S. No schema.**
+- **`logSpecDeal` atomicity.** Creating the prospect company then failing the deal
+  insert orphans a phantom company. Make the two atomic / compensate. *E-010.*
+  **Size: S. No schema.**
+- **Money reversal & void.** Placement fall-through leaves `boarded_at` + invoice
+  standing (sales board disagrees with reality); invoice `void` can't be set
+  (though billings guards for it); mark-paid has no confirm; offer-declined has no
+  first-class path. Defined, confirmed transitions. *Journey D; E-023.* **Size: M.
+  Schema: confirm the `invoice` status enum already includes `void` before
+  building — flag for Matt.**
+- **Responsive shell.** Fixed `w-52` sidebar (no hamburger) + `overflow-x-hidden`
+  main clips wide tables instead of scrolling. Collapsible nav under a breakpoint;
+  `overflow-x-auto` wrappers on wide tables. *E-018.* **Size: M. No schema.**
+- **Ambiguous-match comparison.** The add-person ambiguous list shows name +
+  similarity% only — add current role/company and an open-in-new-tab so Matt can
+  compare before choosing. *E-011.* **Size: S. No schema.**
+- **Stale-edit guard on the brief.** `EditBriefDialog` submits full state (empty
+  clears columns); a concurrent edit silently overwrites. `updated_at` guard or a
+  "changed since you opened this" warning. *E-012.* **Size: S. No schema.**
+- **Long-notes clamp.** `company.notes` (grows to 5000 chars) and `person.profile`
+  render as one unbounded paragraph — clamp-with-"show more". *E-020.* **Size: S.
+  No schema.**
+- **Primary current employment.** Multiple `is_current` rows are picked
+  arbitrarily by the list/typeahead/find-email. Define a single primary. *E-015.*
+  **Size: S.** May need a `employment.is_primary`-style marker — **flag if so.**
+
+### R9 — the speed layer (only where it pays)
+
+Deferred until the spine and edges are solid. Justified strictly by
+frequency×friction (ux.md Part E).
+
+- **Command palette for the two high-friction frequent tasks:** "log a call on
+  <name>" and "add <name> to <job>" — both currently force a navigate-and-search
+  round trip. Extend the existing header typeahead into an action palette. *Journeys
+  C/E.* **Size: M. No schema.**
+- **The `/review` hygiene cockpit.** Read-only surface for the weekly hygiene
+  review (CLAUDE.md): pending merges, counterparty queue, dead letters,
+  `v_ai_spend` vs the £20/£50 caps, `v_retention_review`, `v_statutory_purge`,
+  freshness. Merge/erase stay conversational (ADR-013) — this *surfaces*, Claude
+  *acts*. *Journey F; E-025.* **Size: M. No schema** (all views/tables exist).
+- **Persist the last Radar analysis** per session so an accidental navigation
+  isn't a Haiku re-spend. *E-021.* **Size: S. No schema.**
+- **Bulk actions: NOT YET.** No justification at single-operator, few-hundred-row
+  scale (ADR-002). Revisit when a list routinely needs the same action across many
+  rows.
+
+### Sequencing note
+
+R7 first, in order — the deal page and the "navigate to what you created" fix
+unblock the most journeys. R8's pagination (E-003) is the one R8 item that is
+also a latent *correctness* bug, so it can jump forward if the pool nears 200.
+R9 waits until the spine is complete; a speed layer over dead ends just makes the
+dead ends faster to reach.
