@@ -39,6 +39,11 @@ export function RadarWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [spec, setSpec] = useState<ParsedJd | null>(null);
+  // The file the CURRENT spec was analysed from (null for pasted text) — the
+  // Create-job flow attaches it to the new mandate on the same confirm (E-B1).
+  // Snapshot at analyse-time, not `file` itself: dropping a new file without
+  // re-analysing must not attach a file the spec never saw.
+  const [analysedFile, setAnalysedFile] = useState<File | null>(null);
   // Bumped on every successful analysis so the action dialogs (whose prefill
   // seeds their form state once, on mount) remount and re-seed for a new spec.
   const [analysisId, setAnalysisId] = useState(0);
@@ -74,6 +79,7 @@ export function RadarWorkspace() {
       return;
     }
     setSpec(res.parsed);
+    setAnalysedFile(file);
     setWarning(res.warning ?? null);
     setAnalysisId((n) => n + 1);
     void runMatch(res.parsed);
@@ -170,7 +176,7 @@ export function RadarWorkspace() {
 
       {spec && (
         <>
-          <SpecCard key={`spec-${analysisId}`} spec={spec} />
+          <SpecCard key={`spec-${analysisId}`} spec={spec} jdFile={analysedFile} />
           <MatchesCard
             key={`match-${analysisId}`}
             spec={spec}
@@ -220,8 +226,10 @@ function composeBrief(spec: ParsedJd): string {
 
 /** The standardised spec — chips + fields, mirroring the person page's
  *  standardised CV. Company names come from extracted text (no entity id
- *  exists), so they render as plain text; an anonymised advert says so. */
-function SpecCard({ spec }: { spec: ParsedJd }) {
+ *  exists), so they render as plain text; an anonymised advert says so.
+ *  `jdFile` is the analysed file (null for pasted text): Create job attaches
+ *  it to the new mandate on the same confirm (E-B1). */
+function SpecCard({ spec, jdFile }: { spec: ParsedJd; jdFile: File | null }) {
   const fields: [string, string | null][] = [
     ["Location", spec.location],
     ["Salary", spec.salary_range],
@@ -255,6 +263,7 @@ function SpecCard({ spec }: { spec: ParsedJd }) {
               salaryRange: spec.salary_range ?? "",
               skills,
             }}
+            jdFile={jdFile}
             trigger={<Button size="sm">Create job</Button>}
           />
           <SpecDealDialog

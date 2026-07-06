@@ -9,12 +9,14 @@ import { EditProfileDialog } from "@/components/forms/edit-profile-dialog";
 import { AddFeedbackDialog, DeleteFeedbackButton } from "@/components/forms/feedback-forms";
 import { FindEmailDialog } from "@/components/forms/find-email-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
+import { AddCandidacyDialog } from "@/components/forms/pipeline-forms";
+import { ActivityItem } from "@/components/activity-item";
 import { StandardisedCv } from "@/components/standardised-cv";
 import { UploadDocument } from "@/components/forms/upload-document";
 import { DownloadDocumentButton } from "@/components/download-document-button";
 import { ParsedCvSchema } from "@/lib/cv";
 import { db } from "@/lib/db";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
 import { label } from "@/lib/domain";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,15 +46,16 @@ export default async function PersonPage({
            person_email(email, is_primary),
            employment(title, is_current, start_date, end_date, company(id, name)),
            candidacy(id, stage, stage_changed_at, placed_at, notes,
+                     salary, fee_amount, offer_accepted_at, start_date, boarded_at,
                      mandate(id, title, company(id, name)),
-                     interview(id, round, kind, scheduled_at, outcome),
+                     interview(id, round, kind, scheduled_at, location, notes, feedback, outcome),
                      candidacy_feedback(id, source, author, body, created_at))`,
         )
         .eq("id", id)
         .maybeSingle(),
       db
         .from("activity_participant")
-        .select("role, activity(id, type, occurred_at, subject, summary)")
+        .select("role, activity(id, type, occurred_at, subject, summary, body_raw)")
         .eq("person_id", id)
         .order("occurred_at", { ascending: false, referencedTable: "activity" })
         .limit(25),
@@ -82,6 +85,11 @@ export default async function PersonPage({
             {person.full_name}
           </h1>
           <div className="flex shrink-0 gap-2">
+            {/* E-022: longlist the person you're looking at — no round trip.
+                Hidden for erased people (their page stays read-only, E-013). */}
+            {!person.erased_at && (
+              <AddCandidacyDialog fixedPersonId={person.id} personName={person.full_name} />
+            )}
             <LogActivityDialog personId={person.id} contextLabel={person.full_name} />
             <UploadDocument target={{ personId: person.id }} kind="cv" label="Upload CV" />
             <EditProfileDialog
@@ -202,14 +210,53 @@ export default async function PersonPage({
                   {[...c.interview]
                     .sort((a, b) => a.round - b.round)
                     .map((iv) => (
-                      <div key={iv.id} className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span className="capitalize">
-                          Round {iv.round} · {String(iv.kind).replaceAll("_", " ")}
-                          {iv.scheduled_at ? ` · ${fmtDate(iv.scheduled_at)}` : ""}
-                        </span>
-                        <InterviewOutcomeControl interviewId={iv.id} outcome={iv.outcome} />
+                      <div key={iv.id}>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="capitalize">
+                            Round {iv.round} · {String(iv.kind).replaceAll("_", " ")}
+                            {iv.scheduled_at ? ` · ${fmtDate(iv.scheduled_at)}` : ""}
+                          </span>
+                          <InterviewOutcomeControl interviewId={iv.id} outcome={iv.outcome} />
+                        </div>
+                        {/* E-006: location, notes and feedback render back —
+                            inline expansion, never write-only. */}
+                        {(iv.location || iv.notes || iv.feedback) && (
+                          <details className="mt-0.5">
+                            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                              Location, notes &amp; feedback
+                            </summary>
+                            <div className="mt-1 flex flex-col gap-1 rounded-md bg-muted/40 p-2 text-xs">
+                              {iv.location && (
+                                <p><span className="text-muted-foreground">Location:</span> {iv.location}</p>
+                              )}
+                              {iv.notes && (
+                                <p className="whitespace-pre-wrap">
+                                  <span className="text-muted-foreground">Notes:</span> {iv.notes}
+                                </p>
+                              )}
+                              {iv.feedback && (
+                                <p className="whitespace-pre-wrap">
+                                  <span className="text-muted-foreground">Feedback:</span> {iv.feedback}
+                                </p>
+                              )}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     ))}
+                </div>
+              )}
+              {/* E-007: offer figures + boarded state render back on the
+                  candidacy where they were entered. */}
+              {(c.salary != null || c.fee_amount != null || c.offer_accepted_at ||
+                c.start_date || c.boarded_at) && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Offer</span>
+                  {c.salary != null && <span>salary {fmtMoney(c.salary)}</span>}
+                  {c.fee_amount != null && <span>fee {fmtMoney(c.fee_amount)}</span>}
+                  {c.offer_accepted_at && <span>accepted {fmtDate(c.offer_accepted_at)}</span>}
+                  {c.start_date && <span>starts {fmtDate(c.start_date)}</span>}
+                  {c.boarded_at && <Badge>boarded</Badge>}
                 </div>
               )}
               {c.candidacy_feedback.length > 0 && (
@@ -284,17 +331,8 @@ export default async function PersonPage({
           {activities.map((a, i) => (
             <div key={a.id ?? i}>
               {i > 0 && <Separator className="mb-3" />}
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="font-medium">
-                  {a.subject ?? a.type}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {fmtDate(a.occurred_at)}
-                </span>
-              </div>
-              {a.summary && (
-                <p className="mt-1 text-sm text-muted-foreground">{a.summary}</p>
-              )}
+              <ActivityItem type={a.type} subject={a.subject}
+                bodyRaw={a.body_raw} summary={a.summary} occurredAt={a.occurred_at} />
             </div>
           ))}
         </CardContent>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ActivityItem } from "@/components/activity-item";
 import { CompanyNews } from "@/components/company-news";
 import { CompanyOpenings } from "@/components/company-openings";
 import { EditCompanyDialog } from "@/components/forms/edit-company-dialog";
@@ -7,7 +8,7 @@ import { EnrichCompanyDialog } from "@/components/forms/enrich-company-dialog";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { db } from "@/lib/db";
 import { label } from "@/lib/domain";
-import { fmtDate, fmtMoney } from "@/lib/format";
+import { fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -34,7 +35,7 @@ export default async function CompanyPage({
       .maybeSingle(),
     db
       .from("activity")
-      .select("id, type, occurred_at, subject, summary")
+      .select("id, type, occurred_at, subject, summary, body_raw")
       .eq("company_id", id)
       .order("occurred_at", { ascending: false })
       .limit(10),
@@ -113,7 +114,7 @@ export default async function CompanyPage({
           {company.deal.map((d) => (
             <div key={d.id} className="flex items-baseline justify-between text-sm">
               <span>
-                <Link href="/deals" className="font-medium hover:underline">{d.name}</Link>{" "}
+                <Link href={`/deals/${d.id}`} className="font-medium hover:underline">{d.name}</Link>{" "}
                 <span className="text-muted-foreground">
                   {d.next_step ? `· next: ${d.next_step}` : ""}
                 </span>
@@ -159,13 +160,8 @@ export default async function CompanyPage({
             <p className="text-sm text-muted-foreground">Nothing logged yet.</p>
           )}
           {(activities ?? []).map((a) => (
-            <div key={a.id} className="flex items-baseline justify-between text-sm">
-              <span>
-                <Badge variant="outline" className="mr-2 capitalize">{label(a.type)}</Badge>
-                {a.subject ?? a.summary ?? "—"}
-              </span>
-              <span className="text-xs text-muted-foreground">{fmtDate(a.occurred_at)}</span>
-            </div>
+            <ActivityItem key={a.id} type={a.type} subject={a.subject}
+              bodyRaw={a.body_raw} summary={a.summary} occurredAt={a.occurred_at} />
           ))}
         </CardContent>
       </Card>

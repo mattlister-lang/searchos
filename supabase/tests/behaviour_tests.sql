@@ -947,5 +947,133 @@ begin
   raise notice 'TEST 21 OK: company.apollo_org_id defaults null and round-trips';
 end $$;
 
+-- ---------------------------------------------------------------------------
+-- TEST 22 (0012, E-002): v_next_actions carries a target_type + working link
+-- ids for every branch (deal / candidacy / person), and the null-per-branch
+-- columns stay null. Own fixtures (hex ids, L-012) so it does not depend on
+-- state mutated by earlier tests.
+-- ---------------------------------------------------------------------------
+insert into company (id, name, status) values
+  ('00000000-0000-0000-0000-0000000c07a1', 'R7 Next-Actions Co', 'prospect');
+insert into mandate (id, company_id, title, status) values
+  ('00000000-0000-0000-0000-0000000e07a1', '00000000-0000-0000-0000-0000000c07a1', 'R7 Open Search', 'open');
+-- Deal with no next step, not won/lost -> deal_missing_next_step branch.
+insert into deal (id, company_id, name, stage) values
+  ('00000000-0000-0000-0000-000000d007a1', '00000000-0000-0000-0000-0000000c07a1', 'R7 Deal No Next Step', 'lead');
+-- Stalled candidacy (>14 days on an open mandate) -> candidacy_stalled branch.
+insert into person (id, full_name) values
+  ('00000000-0000-0000-0000-0000000f07b0', 'R7 Stalled Candidate');
+insert into candidacy (id, person_id, mandate_id, stage, stage_changed_at) values
+  ('00000000-0000-0000-0000-0000000ca7b0', '00000000-0000-0000-0000-0000000f07b0',
+   '00000000-0000-0000-0000-0000000e07a1', 'screening', now() - interval '20 days');
+-- Old contact, no activity, but with a live candidacy -> relationship_going_stale.
+insert into person (id, full_name, created_at) values
+  ('00000000-0000-0000-0000-0000000f07c0', 'R7 Going Stale Contact', now() - interval '120 days');
+insert into candidacy (id, person_id, mandate_id, stage, stage_changed_at) values
+  ('00000000-0000-0000-0000-0000000ca7c0', '00000000-0000-0000-0000-0000000f07c0',
+   '00000000-0000-0000-0000-0000000e07a1', 'identified', now());
+
+do $$
+declare r v_next_actions%rowtype;
+begin
+  -- Deal branch: target_type 'deal', deal_id + company_id set, others null.
+  select * into r from v_next_actions where deal_id = '00000000-0000-0000-0000-000000d007a1';
+  if not found then raise exception 'TEST 22 FAILED: deal_missing_next_step row not surfaced'; end if;
+  if r.reason <> 'deal_missing_next_step' or r.target_type <> 'deal' then
+    raise exception 'TEST 22 FAILED: deal row wrong reason/target_type (% / %)', r.reason, r.target_type;
+  end if;
+  if r.company_id <> '00000000-0000-0000-0000-0000000c07a1'
+     or r.person_id is not null or r.mandate_id is not null or r.candidacy_id is not null then
+    raise exception 'TEST 22 FAILED: deal row id columns wrong';
+  end if;
+  if not exists (select 1 from deal where id = r.deal_id)
+     or not exists (select 1 from company where id = r.company_id) then
+    raise exception 'TEST 22 FAILED: deal row ids do not resolve to real rows';
+  end if;
+
+  -- Candidacy branch: target_type 'candidacy', person/mandate/company/candidacy ids set.
+  select * into r from v_next_actions where candidacy_id = '00000000-0000-0000-0000-0000000ca7b0';
+  if not found then raise exception 'TEST 22 FAILED: candidacy_stalled row not surfaced'; end if;
+  if r.reason <> 'candidacy_stalled' or r.target_type <> 'candidacy' then
+    raise exception 'TEST 22 FAILED: candidacy row wrong reason/target_type';
+  end if;
+  if r.person_id <> '00000000-0000-0000-0000-0000000f07b0'
+     or r.mandate_id <> '00000000-0000-0000-0000-0000000e07a1'
+     or r.company_id <> '00000000-0000-0000-0000-0000000c07a1'
+     or r.deal_id is not null then
+    raise exception 'TEST 22 FAILED: candidacy row id columns wrong';
+  end if;
+  if not exists (select 1 from person where id = r.person_id)
+     or not exists (select 1 from mandate where id = r.mandate_id)
+     or not exists (select 1 from candidacy where id = r.candidacy_id) then
+    raise exception 'TEST 22 FAILED: candidacy row ids do not resolve to real rows';
+  end if;
+
+  -- Person branch: target_type 'person', only person_id set.
+  select * into r from v_next_actions
+  where person_id = '00000000-0000-0000-0000-0000000f07c0' and reason = 'relationship_going_stale';
+  if not found then raise exception 'TEST 22 FAILED: relationship_going_stale row not surfaced'; end if;
+  if r.target_type <> 'person'
+     or r.company_id is not null or r.mandate_id is not null
+     or r.candidacy_id is not null or r.deal_id is not null then
+    raise exception 'TEST 22 FAILED: person row id columns wrong';
+  end if;
+  if not exists (select 1 from person where id = r.person_id) then
+    raise exception 'TEST 22 FAILED: person row id does not resolve to a real row';
+  end if;
+
+  raise notice 'TEST 22 OK: v_next_actions carries target_type + working link ids for deal/candidacy/person';
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- TEST 23 (0012, ux.md Journey E): v_upcoming_interviews carries working
+-- person/mandate/candidacy/company link ids, keeps its name columns, and its
+-- outcome/scheduled_at filters still exclude non-scheduled interviews.
+-- ---------------------------------------------------------------------------
+insert into company (id, name, status) values
+  ('00000000-0000-0000-0000-0000000c07b1', 'R7 Interview Co', 'client');
+insert into mandate (id, company_id, title, status) values
+  ('00000000-0000-0000-0000-0000000e07b1', '00000000-0000-0000-0000-0000000c07b1', 'R7 Interview Search', 'open');
+insert into person (id, full_name) values
+  ('00000000-0000-0000-0000-0000000f07d0', 'R7 Interview Candidate');
+insert into candidacy (id, person_id, mandate_id, stage) values
+  ('00000000-0000-0000-0000-0000000ca7d0', '00000000-0000-0000-0000-0000000f07d0',
+   '00000000-0000-0000-0000-0000000e07b1', 'client_interview');
+-- Upcoming + scheduled -> in the view.
+insert into interview (id, candidacy_id, round, kind, scheduled_at, outcome) values
+  ('00000000-0000-0000-0000-0000000107d0', '00000000-0000-0000-0000-0000000ca7d0',
+   2, 'panel', now() + interval '3 days', 'scheduled');
+-- Same schedule but outcome 'passed' -> excluded (filter must survive the retrofit).
+insert into interview (id, candidacy_id, round, kind, scheduled_at, outcome) values
+  ('00000000-0000-0000-0000-0000000107d1', '00000000-0000-0000-0000-0000000ca7d0',
+   1, 'video', now() + interval '3 days', 'passed');
+
+do $$
+declare r v_upcoming_interviews%rowtype;
+begin
+  select * into r from v_upcoming_interviews where interview_id = '00000000-0000-0000-0000-0000000107d0';
+  if not found then raise exception 'TEST 23 FAILED: scheduled upcoming interview not surfaced'; end if;
+  if r.person_id <> '00000000-0000-0000-0000-0000000f07d0'
+     or r.mandate_id <> '00000000-0000-0000-0000-0000000e07b1'
+     or r.candidacy_id <> '00000000-0000-0000-0000-0000000ca7d0'
+     or r.company_id <> '00000000-0000-0000-0000-0000000c07b1' then
+    raise exception 'TEST 23 FAILED: upcoming interview link ids wrong';
+  end if;
+  if r.candidate is null or r.mandate is null or r.client is null then
+    raise exception 'TEST 23 FAILED: existing name columns lost in the retrofit';
+  end if;
+  if not exists (select 1 from person where id = r.person_id)
+     or not exists (select 1 from mandate where id = r.mandate_id)
+     or not exists (select 1 from candidacy where id = r.candidacy_id)
+     or not exists (select 1 from company where id = r.company_id) then
+    raise exception 'TEST 23 FAILED: upcoming interview ids do not resolve to real rows';
+  end if;
+  -- Filter intact: the non-scheduled ('passed') interview is excluded.
+  if exists (select 1 from v_upcoming_interviews where interview_id = '00000000-0000-0000-0000-0000000107d1') then
+    raise exception 'TEST 23 FAILED: non-scheduled interview surfaced (outcome filter broken)';
+  end if;
+  raise notice 'TEST 23 OK: v_upcoming_interviews carries working link ids, names + outcome filter intact';
+end $$;
+
 rollback;
 \echo ALL BEHAVIOUR TESTS PASSED

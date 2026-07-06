@@ -70,7 +70,7 @@ export function HeaderSearch() {
         next.push({
           heading: "Deals",
           items: res.deals.map((d) => ({
-            href: "/deals",
+            href: `/deals/${d.id}`,
             primary: d.name,
             secondary: d.company?.name ?? undefined,
           })),

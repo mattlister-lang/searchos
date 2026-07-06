@@ -289,6 +289,9 @@ const DealInput = z.object({
   value: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().optional()),
   nextStep: optional(z.string().trim().max(500)),
   notes: optional(z.string().trim().max(5000)),
+  // E-008: the deal's primary contact, set from the dialog's PersonPicker.
+  // Patch-only-when-provided, like notes — clearing stays conversational.
+  primaryContactId: optional(z.string().uuid()),
 });
 
 export async function upsertDeal(raw: unknown): Promise<ActionResult> {
@@ -304,9 +307,11 @@ export async function upsertDeal(raw: unknown): Promise<ActionResult> {
     if (input.value !== undefined) patch.value = input.value;
     if (input.notes !== undefined) patch.notes = input.notes;
     if (input.name) patch.name = input.name;
+    if (input.primaryContactId) patch.primary_contact_id = input.primaryContactId;
     const { error } = await db.from("deal").update(patch).eq("id", input.dealId);
     if (error) return { ok: false, error: "Update failed." };
     revalidatePath("/deals");
+    revalidatePath(`/deals/${input.dealId}`);
     return { ok: true, id: input.dealId };
   }
 
@@ -329,6 +334,7 @@ export async function upsertDeal(raw: unknown): Promise<ActionResult> {
       value: input.value ?? null,
       next_step: input.nextStep,
       notes: input.notes ?? null,
+      primary_contact_id: input.primaryContactId ?? null,
     })
     .select("id")
     .single();
@@ -348,6 +354,9 @@ const MandateInput = z.object({
     (v) => (typeof v === "string" ? v.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) : v ?? []),
     z.array(z.string().max(60)).max(30),
   ),
+  // E-009 convert-deal flow: links the BD deal onto the new mandate
+  // (mandate.deal_id) so the job lifecycle keeps its BD→delivery lineage.
+  dealId: optional(z.string().uuid()),
 });
 
 export async function createMandate(raw: unknown): Promise<ActionResult> {
@@ -357,6 +366,16 @@ export async function createMandate(raw: unknown): Promise<ActionResult> {
   const input = parsed.data;
   const companyId = await resolveCompanyId({ name: input.companyName });
   if (!companyId) return { ok: false, error: `Unknown company "${input.companyName}" — create it first.` };
+
+  // Convert-deal flow (E-009): never link lineage to a deal that isn't there.
+  if (input.dealId) {
+    const { data: deal } = await db
+      .from("deal")
+      .select("id")
+      .eq("id", input.dealId)
+      .maybeSingle();
+    if (!deal) return { ok: false, error: "That deal no longer exists — refresh and retry." };
+  }
 
   const { data, error } = await db
     .from("mandate")
@@ -370,12 +389,50 @@ export async function createMandate(raw: unknown): Promise<ActionResult> {
       salary_range: input.salaryRange ?? null,
       skills: input.skills,
       opened_at: new Date().toISOString().slice(0, 10),
+      deal_id: input.dealId ?? null,
     })
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: "Insert failed." };
   revalidatePath("/pipeline");
+  if (input.dealId) revalidatePath(`/deals/${input.dealId}`);
   return { ok: true, id: data.id };
+}
+
+/** E-B1 (Journey B): create the job AND attach the Radar-analysed JD on the
+ *  same confirm. A File can't ride a plain-object action payload (L-023), so
+ *  the dialog wraps the mandate fields as JSON + the file into FormData; the
+ *  mandate is created by the unchanged createMandate path and the JD lands
+ *  via the one persistDocument path (kind 'spec'). If storing the JD fails
+ *  after the mandate exists, compensate with a message — never a rollback
+ *  (E-016 shape, same as createPersonFromCv). */
+export async function createMandateWithJd(formData: FormData): Promise<ActionResult> {
+  await requireUser();
+  const file = formData.get("file") as File | null;
+  const payloadRaw = formData.get("payload");
+  if (!file || file.size === 0) return { ok: false, error: "The JD file went missing — re-attach it and retry." };
+  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
+  if (typeof payloadRaw !== "string") return { ok: false, error: "Invalid input." };
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(payloadRaw);
+  } catch {
+    return { ok: false, error: "Invalid input." };
+  }
+
+  const created = await createMandate(payload);
+  if (!created.ok || !created.id) return created;
+
+  const stored = await persistDocument(file, { mandateId: created.id }, "spec", null);
+  if (!stored.ok) {
+    return {
+      ok: false,
+      error: "The job was created, but attaching the JD failed — open it from /jobs and use Upload JD.",
+    };
+  }
+  revalidatePath(`/jobs/${created.id}`);
+  return { ok: true, id: created.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -459,15 +516,17 @@ export async function moveStage(raw: unknown): Promise<ActionResult> {
 // Documents (CV upload → private Storage bucket + document row)
 // ---------------------------------------------------------------------------
 
-/** Where a document hangs: a person (CVs) or a mandate (JD/spec — F3). */
-type DocumentTarget = { personId: string } | { mandateId: string };
+/** Where a document hangs: a person (CVs), a mandate (JD/spec — F3), or a
+ *  deal (proposals/terms — the R7 deal page, E-001). */
+type DocumentTarget = { personId: string } | { mandateId: string } | { dealId: string };
 
 /** The one storage-upload + document-row path, shared by uploadDocument and
  *  the CV-first flow (never a second copy). Extracts text at upload
  *  (document.parsed_text) and persists the standardised-CV JSON when the
- *  caller has one (document.parsed_cv, 0008). R4/F3 generalises the target:
- *  person documents live under person/<id>/, mandate documents (JD specs)
- *  under mandate/<id>/ with person_id null. */
+ *  caller has one (document.parsed_cv, 0008). R4/F3 generalised the target to
+ *  mandates; R7 adds deals: person documents live under person/<id>/, mandate
+ *  documents (JD specs) under mandate/<id>/, deal documents (proposals/terms)
+ *  under deal/<id>/ — always with exactly one owner column set. */
 async function persistDocument(
   file: File,
   target: DocumentTarget,
@@ -477,7 +536,9 @@ async function persistDocument(
   const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-100);
   const prefix = "personId" in target
     ? `person/${target.personId}`
-    : `mandate/${target.mandateId}`;
+    : "mandateId" in target
+      ? `mandate/${target.mandateId}`
+      : `deal/${target.dealId}`;
   const path = `${prefix}/${Date.now()}-${safeName}`;
   const { error: upErr } = await db.storage
     .from("documents")
@@ -497,6 +558,7 @@ async function persistDocument(
       parsed_cv: parsedCv,
       person_id: "personId" in target ? target.personId : null,
       mandate_id: "mandateId" in target ? target.mandateId : null,
+      deal_id: "dealId" in target ? target.dealId : null,
     })
     .select("id")
     .single();
@@ -509,15 +571,17 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
   const file = formData.get("file") as File | null;
   const personId = formData.get("personId") as string | null;
   const mandateId = formData.get("mandateId") as string | null;
-  const kind = (formData.get("kind") as string | null) ?? (mandateId ? "spec" : "cv");
+  const dealId = formData.get("dealId") as string | null;
+  const kind = (formData.get("kind") as string | null)
+    ?? (mandateId ? "spec" : dealId ? "terms" : "cv");
   if (!file || file.size === 0) return { ok: false, error: "No file." };
-  // Exactly one owner — a document is a person's or a mandate's, never both.
-  if ((personId ? 1 : 0) + (mandateId ? 1 : 0) !== 1) {
+  // Exactly one owner — a document belongs to one person, mandate or deal.
+  if ((personId ? 1 : 0) + (mandateId ? 1 : 0) + (dealId ? 1 : 0) !== 1) {
     return { ok: false, error: "Invalid document target." };
   }
-  const targetId = personId ?? mandateId;
+  const targetId = personId ?? mandateId ?? dealId;
   if (!targetId || !z.string().uuid().safeParse(targetId).success) {
-    return { ok: false, error: personId ? "Invalid person." : "Invalid job." };
+    return { ok: false, error: "Invalid document target." };
   }
   if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Max 10MB." };
   if (!["cv", "spec", "terms", "other"].includes(kind)) return { ok: false, error: "Invalid kind." };
@@ -525,12 +589,12 @@ export async function uploadDocument(formData: FormData): Promise<ActionResult> 
 
   const stored = await persistDocument(
     file,
-    personId ? { personId } : { mandateId: targetId },
+    personId ? { personId } : mandateId ? { mandateId } : { dealId: targetId },
     docKind,
     null,
   );
   if (!stored.ok) return stored;
-  revalidatePath(personId ? `/people/${targetId}` : `/jobs/${targetId}`);
+  revalidatePath(personId ? `/people/${targetId}` : mandateId ? `/jobs/${targetId}` : `/deals/${targetId}`);
   return { ok: true, id: stored.id };
 }
 
@@ -868,6 +932,42 @@ export async function searchPeople(raw: unknown): Promise<PersonSearchResult> {
     };
   });
   return { ok: true, people };
+}
+
+export type MandateHit = { id: string; title: string; context?: string };
+export type MandateSearchResult =
+  | { ok: true; mandates: MandateHit[] }
+  | { ok: false; error: string };
+
+const SearchMandatesInput = z.object({ q: z.string().trim().min(2) });
+
+/** Job typeahead (E-022 "Add to job" from the person page): title ilike,
+ *  open mandates first (mandate_status enum order puts 'open' first), the
+ *  client + any non-open status folded into a disambiguation line. Mirror of
+ *  searchPeople, feeding the MandatePicker. */
+export async function searchMandates(raw: unknown): Promise<MandateSearchResult> {
+  await requireUser();
+  const parsed = SearchMandatesInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Type at least 2 characters." };
+
+  const { data, error } = await db
+    .from("mandate")
+    .select("id, title, status, company(name)")
+    .ilike("title", `%${parsed.data.q}%`)
+    .order("status")
+    .order("title")
+    .limit(8);
+  if (error) return { ok: false, error: "Search failed." };
+
+  const mandates: MandateHit[] = (data ?? []).map((m) => {
+    const parts = [m.company?.name, m.status === "open" ? null : label(m.status)].filter(Boolean);
+    return {
+      id: m.id,
+      title: m.title,
+      context: parts.length ? parts.join(" · ") : undefined,
+    };
+  });
+  return { ok: true, mandates };
 }
 
 // ---------------------------------------------------------------------------

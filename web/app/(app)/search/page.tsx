@@ -89,7 +89,7 @@ export default async function Search({
           <CardContent className="flex flex-col gap-2">
             {deals.map((d) => (
               <div key={d.id} className="flex items-center gap-2 text-sm">
-                <Link href="/deals" className="font-medium hover:underline">{d.name}</Link>
+                <Link href={`/deals/${d.id}`} className="font-medium hover:underline">{d.name}</Link>
                 {d.company && (
                   <Link href={`/companies/${d.company.id}`}
                     className="text-muted-foreground hover:underline">

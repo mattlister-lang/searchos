@@ -7,9 +7,10 @@ import { JobKanban, type KanbanCard } from "@/components/job-kanban";
 import { LogActivityDialog } from "@/components/forms/log-activity-dialog";
 import { DownloadDocumentButton } from "@/components/download-document-button";
 import { UploadDocument } from "@/components/forms/upload-document";
+import { ActivityItem } from "@/components/activity-item";
 import { db } from "@/lib/db";
 import { label, LIVE_STAGES, TERMINAL_STAGES } from "@/lib/domain";
-import { daysSince, fmtDate } from "@/lib/format";
+import { daysSince, fmtDate, fmtMoney } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -32,6 +33,7 @@ export default async function JobPage({
          company(id, name),
          deal:deal_id(id, name, stage),
          candidacy(id, stage, stage_changed_at, outcome_reason,
+                   salary, fee_amount, offer_accepted_at, start_date, boarded_at,
                    person(id, full_name),
                    interview(id, round, kind, scheduled_at, outcome),
                    candidacy_feedback(id, source, author, body, created_at))`,
@@ -40,7 +42,7 @@ export default async function JobPage({
       .maybeSingle(),
     db
       .from("activity")
-      .select("id, type, occurred_at, subject, summary")
+      .select("id, type, occurred_at, subject, summary, body_raw")
       .eq("mandate_id", id)
       .order("occurred_at", { ascending: false })
       .limit(10),
@@ -130,7 +132,7 @@ export default async function JobPage({
             <Badge key={s} variant="outline">{s}</Badge>
           ))}
           {mandate.deal && (
-            <Link href="/deals">
+            <Link href={`/deals/${mandate.deal.id}`}>
               <Badge variant="outline">BD: {mandate.deal.name} · {mandate.deal.stage}</Badge>
             </Link>
           )}
@@ -220,6 +222,18 @@ export default async function JobPage({
                     <AddFeedbackDialog candidacyId={c.id}
                       contextLabel={c.person?.full_name ?? mandate.title} />
                   </div>
+                  {/* E-007: offer figures render back where the money lives. */}
+                  {(c.salary != null || c.fee_amount != null || c.offer_accepted_at ||
+                    c.start_date || c.boarded_at) && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Offer</span>
+                      {c.salary != null && <span>salary {fmtMoney(c.salary)}</span>}
+                      {c.fee_amount != null && <span>fee {fmtMoney(c.fee_amount)}</span>}
+                      {c.offer_accepted_at && <span>accepted {fmtDate(c.offer_accepted_at)}</span>}
+                      {c.start_date && <span>starts {fmtDate(c.start_date)}</span>}
+                      {c.boarded_at && <Badge>boarded</Badge>}
+                    </div>
+                  )}
                   {(c.candidacy_feedback ?? []).length > 0 && (
                     <div className="mt-2 flex flex-col gap-1.5 border-t pt-2">
                       {[...(c.candidacy_feedback ?? [])]
@@ -278,13 +292,8 @@ export default async function JobPage({
             <p className="text-sm text-muted-foreground">Nothing logged against this job yet.</p>
           )}
           {(activities ?? []).map((a) => (
-            <div key={a.id} className="flex items-baseline justify-between text-sm">
-              <span>
-                <Badge variant="outline" className="mr-2 capitalize">{label(a.type)}</Badge>
-                {a.subject ?? a.summary ?? "—"}
-              </span>
-              <span className="text-xs text-muted-foreground">{fmtDate(a.occurred_at)}</span>
-            </div>
+            <ActivityItem key={a.id} type={a.type} subject={a.subject}
+              bodyRaw={a.body_raw} summary={a.summary} occurredAt={a.occurred_at} />
           ))}
         </CardContent>
       </Card>
